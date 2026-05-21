@@ -122,7 +122,10 @@ def search(query: str):
     
     # S'il n'y a pas d'extension => tableau vide
     if extension is None:
-        return {"files": []}
+        return {
+            "reply": "Je n'ai pas compris le type de fichier recherché.",
+            "files": []
+        }
 
     for file in Path("E:/").rglob(f"*.{extension}"):
 
@@ -132,24 +135,8 @@ def search(query: str):
         if len(results) >= 20:
             break
 
-    return {"files": results}
+    return {
+        "reply": f"{len(results)} fichier(s) trouvé(s)",
+        "files": results
+    }
 
-
-@app.post("/chat")
-async def chat(request: ChatRequest):
-    # On convertit en format Ollama
-    ollama_messages = [{"role": m.role, "content": m.content} for m in request.messages]
-    
-    async with httpx.AsyncClient() as client:
-        response = await client.post(
-            "http://localhost:11434/api/chat",
-            json={
-                "model": "llama3",  
-                "messages": ollama_messages,
-                "stream": False,
-            },
-            timeout=60.0,
-        )
-    
-    data = response.json()
-    return {"reply": data["message"]["content"]}

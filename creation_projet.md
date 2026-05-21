@@ -84,3 +84,20 @@ on doit avoir un retour json :
 }
 ```
 
+3. Coté frontend :
+
+Dans la fonction  App ou Index, copier ce code afin de lier le front et le back :
+
+```javascript
+const response = await fetch(
+  "http://127.0.0.1:8000/"
+)
+
+const data = await response.json()
+
+console.log(data)
+```
+
+Ce code est minime, il s'agit juste d'initier un projet.
+
+
