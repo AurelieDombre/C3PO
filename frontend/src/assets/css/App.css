@@ -131,6 +131,28 @@
    border-radius: 2px;
  }
 
+ .ai-files {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  max-width: 82%;
+}
+
+.ai-file-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #0f1923;
+  border: 1px solid #1e3a2e;
+  border-radius: 8px;
+  font-family: 'DM Mono', monospace;
+  font-size: 12px;
+  color: #4ade9e;
+  word-break: break-all;
+}
+
  /* Empty state */
  .ai-empty {
    flex: 1;

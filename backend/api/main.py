@@ -3,6 +3,7 @@ from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from api.schema import Message, ChatRequest
 import httpx
+import json
 
 
 app = FastAPI()
@@ -148,6 +149,24 @@ Demande utilisateur :
 
     return data["response"]
 
+def search_files(keywords: list[str], extensions: list[str], sort: str = "date_desc"):
+    results = []
+    base_path = Path("E:/")
+
+    for ext in extensions:
+        for file in base_path.rglob(f"*.{ext}"):
+            name_lower = file.name.lower()
+            # Le fichier doit contenir AU MOINS un des mots-clés
+            if any(kw.lower() in name_lower for kw in keywords):
+                results.append(file)
+            if len(results) >= 20:
+                break
+
+    # Tri par date de modification (le plus récent en premier)
+    if sort == "date_desc":
+        results.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+
+    return [str(f) for f in results]
 
 @app.get("/search")
 async def search(query: str):
@@ -162,30 +181,32 @@ async def search(query: str):
     
 @app.post("/chat")
 async def chat(request: ChatRequest):
+    # Le dernier message de l'utilisateur
+    last_message = request.messages[-1].content
 
-    # Conversion format Ollama
-    ollama_messages = [
-        {
-            "role": m.role,
-            "content": m.content
-        }
-        for m in request.messages
-    ]
+    # Étape 1 : Ollama analyse la phrase
+    raw = await parse_query_with_ollama(last_message)
 
-    async with httpx.AsyncClient() as client:
+    # Étape 2 : on parse le JSON retourné par Ollama
+    try:
+        # Ollama ajoute parfois du texte autour du JSON, on extrait le bloc {}
+        start = raw.index("{")
+        end = raw.rindex("}") + 1
+        parsed = json.loads(raw[start:end])
+    except (ValueError, json.JSONDecodeError):
+        return {"reply": "Je n'ai pas compris ta demande. Essaie : 'cherche mes pdf de factures'", "files": []}
 
-        response = await client.post(
-            "http://localhost:11434/api/chat",
-            json={
-                "model": "llama3",
-                "messages": ollama_messages,
-                "stream": False
-            },
-            timeout=60.0
-        )
+    keywords = parsed.get("keywords", [])
+    extensions = parsed.get("extensions", ["pdf"])
+    sort = parsed.get("sort", "date_desc")
 
-    data = response.json()
+    # Étape 3 : recherche sur le disque
+    files = search_files(keywords, extensions, sort)
 
-    return {
-        "reply": data["message"]["content"]
-    }
+    # Étape 4 : réponse formatée pour le chat
+    if files:
+        reply = f"J'ai trouvé {len(files)} fichier(s) correspondant à ta recherche :"
+    else:
+        reply = f"Aucun fichier trouvé pour les mots-clés : {', '.join(keywords)}"
+
+    return {"reply": reply, "files": files}

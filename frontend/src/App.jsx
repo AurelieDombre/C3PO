@@ -28,7 +28,7 @@ export default function App() {
         body: JSON.stringify({ messages: newMessages }),
       });
       const data = await response.json();
-      setMessages([...newMessages, { role: "assistant", content: data.reply }]);
+      setMessages([...newMessages, { role: "assistant", content: data.reply, files: data.files }]);
     } catch {
       setMessages([
         ...newMessages,
@@ -67,6 +67,17 @@ export default function App() {
                   {msg.role === "user" ? "Vous" : "Assistant"}
                 </span>
                 <div className="ai-bubble">{msg.content}</div>
+                {/* Fichiers retournés par la recherche */}
+                {msg.files && msg.files.length > 0 && (
+                  <div className="ai-files">
+                    {msg.files.map((path, j) => (
+                      <div key={j} className="ai-file-item">
+                        <span className="ai-file-icon">📄</span>
+                        <span className="ai-file-path">{path}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
  
