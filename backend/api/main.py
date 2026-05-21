@@ -22,11 +22,26 @@ def root():
 
 def parse_query(query: str):
 
+    # On met tout en minuscules pour éviter les problèmes :
     query = query.lower()
 
+
+    # Variable qui contiendra l'extension détectée. Exemple : "pdf"
     extension = None
+
+
+    # Variable qui contiendra le mot-clé principal. Exemple : "facture"
     keyword = ""
 
+    # Dictionnaire de traduction
+    #
+    # Si l'utilisateur écrit :
+    # "images"
+    #
+    # alors on comprend :
+    # "*.png"
+    #
+    # Tu peux ajouter plein de synonymes ici.
     extensions_map = {
         "pdf": "pdf",
         "image": "png",
@@ -36,11 +51,19 @@ def parse_query(query: str):
         "document": "docx",
     }
 
+
+    # On parcourt tous les mots-clés du dictionnaire. Exemple : word = "pdf";  ext = "pdf"
+    # puis :
+    # word = "image"
+    # ext = "png"
     for word, ext in extensions_map.items():
 
+
+        # Si le mot est présent dans la phrase utilisateur. Exemple :"cherche mes pdf" alors : extension = "pdf"
         if word in query:
             extension = ext
 
+    # Liste des mots inutiles. On veut les supprimer. Exemple : "cherche mes pdf facture" devient : "facture"
     blacklist = [
         "cherche",
         "trouve",
@@ -54,19 +77,39 @@ def parse_query(query: str):
         "photos",
     ]
 
+
+    # On découpe la phrase en mots
+    # Exemple :
+    # "cherche mes pdf facture"
+    # devient :
+    # ["cherche", "mes", "pdf", "facture"]
     words = query.split()
 
+
+    # On garde uniquement les mots utiles
+    # Ici : "facture"
+    # parce que les autres mots sont dans la blacklist
     filtered_words = [
         word for word in words
         if word not in blacklist
     ]
 
+
+    # On reconstruit une phrase propre Exemple : ["facture"] devient : "facture"
     keyword = " ".join(filtered_words)
 
+
+    # On retourne le résultat final
+    # Exemple :
+    # {
+    #   "extension": "pdf",
+    #   "keyword": "facture"
+    # }
     return {
         "extension": extension,
         "keyword": keyword
     }
+
 
 @app.get("/search")
 def search(query: str):

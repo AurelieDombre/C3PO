@@ -1,4 +1,4 @@
-# Process de création de chatBot
+# Process d'initialisation d'un chatBot
 
 ## Créer le projet :
 
@@ -83,3 +83,4 @@ on doit avoir un retour json :
 "message": "Backend OK"
 }
 ```
+
