@@ -1,4 +1,4 @@
-
+from typing import List
 from pydantic import BaseModel
 
 
@@ -7,4 +7,4 @@ class Message(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
-    messages: list[Message]
+    messages: List[Message]

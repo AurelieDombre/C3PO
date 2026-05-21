@@ -20,6 +20,7 @@ app.add_middleware(
 def root():
     return {"message": "Backend OK"}
 
+# Recherche local sans IA
 def parse_query(query: str):
 
     # On met tout en minuscules pour éviter les problèmes :
@@ -110,33 +111,81 @@ def parse_query(query: str):
         "keyword": keyword
     }
 
+# Ollama
+async def parse_query_with_ollama(query: str):
+
+    prompt = f"""
+Tu es un assistant qui analyse des demandes utilisateur.
+
+Tu dois retourner UNIQUEMENT un JSON valide.
+
+Exemple :
+
+{{
+    "intent": "search_files",
+    "keywords": ["avis", "imposition"],
+    "extensions": ["pdf"],
+    "sort": "date_desc"
+}}
+
+Demande utilisateur :
+{query}
+"""
+
+    async with httpx.AsyncClient() as client:
+
+        response = await client.post(
+            "http://localhost:11434/api/generate",
+            json={
+                "model": "llama3",
+                "prompt": prompt,
+                "stream": False
+            },
+            timeout=60.0
+        )
+
+    data = response.json()
+
+    return data["response"]
+
 
 @app.get("/search")
-def search(query: str):
-    
-    parsed = parse_query(query)
-    extension = parsed["extension"]
-    keyword = parsed["keyword"]
-    
-    results = []
-    
-    # S'il n'y a pas d'extension => tableau vide
-    if extension is None:
-        return {
-            "reply": "Je n'ai pas compris le type de fichier recherché.",
-            "files": []
-        }
+async def search(query: str):
 
-    for file in Path("E:/").rglob(f"*.{extension}"):
-
-        if keyword.lower() in file.name.lower():
-            results.append(str(file))
-
-        if len(results) >= 20:
-            break
+    ollama_response = await parse_query_with_ollama(query)
 
     return {
-        "reply": f"{len(results)} fichier(s) trouvé(s)",
-        "files": results
+        "reply": ollama_response,
+        "files": []
     }
+    
+    
+@app.post("/chat")
+async def chat(request: ChatRequest):
 
+    # Conversion format Ollama
+    ollama_messages = [
+        {
+            "role": m.role,
+            "content": m.content
+        }
+        for m in request.messages
+    ]
+
+    async with httpx.AsyncClient() as client:
+
+        response = await client.post(
+            "http://localhost:11434/api/chat",
+            json={
+                "model": "llama3",
+                "messages": ollama_messages,
+                "stream": False
+            },
+            timeout=60.0
+        )
+
+    data = response.json()
+
+    return {
+        "reply": data["message"]["content"]
+    }
