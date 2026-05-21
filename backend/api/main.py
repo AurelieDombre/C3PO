@@ -19,12 +19,13 @@ def root():
 
 
 @app.get("/search")
-def search(extension: str):
-
+def search(extension: str, keyword: str = ""):
     results = []
 
     for file in Path("E:/").rglob(f"*.{extension}"):
-        results.append(str(file))
+
+        if keyword.lower() in file.name.lower():
+            results.append(str(file))
 
         if len(results) >= 20:
             break
