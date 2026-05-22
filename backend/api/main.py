@@ -102,17 +102,19 @@ def parse_query(query: str):
 # =========================================================
 async def parse_query_with_ollama(query: str):
 
+    # Prompt envoyé au modèle LLM (Ollama)
+    # Objectif : forcer une réponse STRICTEMENT en JSON
     prompt = f"""
 Return ONLY valid JSON:
 
 Exemple :
 
-{{
+{
     "intent": "search_files",
     "keywords": ["avis", "imposition"],
     "extensions": ["pdf"],
     "sort": "date_desc",
-}}
+}
 
 Règles :
 - Si l'utilisateur demande "dernier", "plus récent", "latest", alors :
@@ -126,35 +128,62 @@ Règles :
 Demande utilisateur :
 {query}
 """
+
     try:
+        # Création d’un client HTTP asynchrone avec timeout de sécurité parce qu'il faut que fastapi soit pret
         async with httpx.AsyncClient(timeout=5.0) as client:
 
+            # Envoi de la requête POST vers l'API Ollama locale
             response = await client.post(
                 "http://127.0.0.1:11434/api/generate",
                 json={
-                    "model": "llama3",
-                    "prompt": prompt,
-                    "stream": False
+                    "model": "llama3",   # modèle utilisé
+                    "prompt": prompt,    # prompt construit ci-dessus
+                    "stream": False      # réponse complète (pas en streaming)
                 },
-                timeout=60.0
+                timeout=60.0  # timeout global de la requête (sécurité)
             )
+
+        # Vérifie si le serveur a répondu correctement (status HTTP 200)
         response.raise_for_status()
+
+        # Convertit la réponse HTTP en JSON Python
         data = response.json()
-        
+
+        # Récupère le texte généré par le modèle
+        # (souvent du texte contenant du JSON + parfois du bruit)
         raw = data.get("response", "")
 
-        # extraction JSON SAFE
+        # =========================
+        # EXTRACTION DU JSON
+        # =========================
+
+        # Cherche le premier "{"
         start = raw.find("{")
+
+        # Cherche le dernier "}"
         end = raw.rfind("}") + 1
 
+        # Si aucun JSON détecté → on abandonne proprement
         if start == -1 or end == 0:
             return None
 
-        return json.loads(raw[start:end])
-    except Exception as e:
-        print(f"⚠️ Ollama error ({type(e).__name__}): {e}")
-        return None
+        # Extraction de la partie JSON dans la chaîne
+        json_string = raw[start:end]
 
+        # Conversion du JSON texte en dictionnaire Python
+        return json.loads(json_string)
+
+    except Exception as e:
+        # Capture toutes les erreurs possibles :
+        # - Ollama offline
+        # - timeout réseau
+        # - JSON invalide
+        # - erreur HTTP
+        print(f"⚠️ Ollama error ({type(e).__name__}): {e}")
+
+        # Retour sécurisé : fallback vers parser local
+        return None
 # 
 # =========================================================
 # #. ANALYSE UNIFIÉE (Analyse la demande et retourne la query pour ollama ou syst local) 
