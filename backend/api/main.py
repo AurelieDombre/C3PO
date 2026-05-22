@@ -21,19 +21,13 @@ app.add_middleware(
 def root():
     return {"message": "Backend OK"}
 
-# Recherche local sans IA
+# =========================================================
+# #. PARSER LOCAL (sans IA)
+# =========================================================
 def parse_query(query: str):
 
     # On met tout en minuscules pour éviter les problèmes :
     query = query.lower()
-
-
-    # Variable qui contiendra l'extension détectée. Exemple : "pdf"
-    extension = None
-
-
-    # Variable qui contiendra le mot-clé principal. Exemple : "facture"
-    keyword = ""
 
     # Dictionnaire de traduction
     #
@@ -53,14 +47,14 @@ def parse_query(query: str):
         "document": "docx",
     }
 
+    # Variable qui contiendra l'extension détectée. Exemple : "pdf"
+    extension = None
 
     # On parcourt tous les mots-clés du dictionnaire. Exemple : word = "pdf";  ext = "pdf"
     # puis :
     # word = "image"
     # ext = "png"
     for word, ext in extensions_map.items():
-
-
         # Si le mot est présent dans la phrase utilisateur. Exemple :"cherche mes pdf" alors : extension = "pdf"
         if word in query:
             extension = ext
@@ -78,8 +72,6 @@ def parse_query(query: str):
         "image",
         "photos",
     ]
-
-
     # On découpe la phrase en mots
     # Exemple :
     # "cherche mes pdf facture"
@@ -87,19 +79,10 @@ def parse_query(query: str):
     # ["cherche", "mes", "pdf", "facture"]
     words = query.split()
 
-
-    # On garde uniquement les mots utiles
+        # On garde uniquement les mots utiles
     # Ici : "facture"
     # parce que les autres mots sont dans la blacklist
-    filtered_words = [
-        word for word in words
-        if word not in blacklist
-    ]
-
-
-    # On reconstruit une phrase propre Exemple : ["facture"] devient : "facture"
-    keyword = " ".join(filtered_words)
-
+    keywords = [word for word in words if word not in blacklist]
 
     # On retourne le résultat final
     # Exemple :
@@ -108,19 +91,19 @@ def parse_query(query: str):
     #   "keyword": "facture"
     # }
     return {
-        "keywords": [keyword] if keyword else [],
+        "keywords": keywords if keywords else ["*"],
         "extensions": [extension] if extension else ["pdf"],
         "sort": "date_desc",
         "limit": 20
     }
 
-# Ollama => Prompt pour la recherche
+# =========================================================
+# #. OLLAMA PARSER 
+# =========================================================
 async def parse_query_with_ollama(query: str):
 
     prompt = f"""
-Tu es un assistant qui analyse des demandes utilisateur.
-
-Tu dois retourner UNIQUEMENT un JSON valide.
+Return ONLY valid JSON:
 
 Exemple :
 
@@ -144,7 +127,7 @@ Demande utilisateur :
 {query}
 """
     try:
-        async with httpx.AsyncClient() as client:
+        async with httpx.AsyncClient(timeout=5.0) as client:
 
             response = await client.post(
                 "http://127.0.0.1:11434/api/generate",
@@ -157,21 +140,63 @@ Demande utilisateur :
             )
         response.raise_for_status()
         data = response.json()
+        
+        raw = data.get("response", "")
 
-        return data["response"]
-    except:
-        print("⚠️ Ollama indisponible :", e)
-        raise
+        # extraction JSON SAFE
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
 
+        if start == -1 or end == 0:
+            return None
 
-# Recherche et création du lien vers le fichier
+        return json.loads(raw[start:end])
+    except Exception as e:
+        print("⚠️ Ollama error:", e)
+        return None
+
+# 
+# =========================================================
+# #. ANALYSE UNIFIÉE (Analyse la demande et retourne la query pour ollama ou syst local) 
+# =========================================================
+async def analyze_query(query: str):
+    parsed = await parse_query_with_ollama(query)
+    # CAS 1 : Ollama OK
+    if parsed:
+        try:
+            return {
+                "keywords": parsed.get("keywords") or ["*"],
+                "extensions": parsed.get("extensions") or ["pdf"],
+                "sort": parsed.get("sort", "date_desc"),
+                "limit": parsed.get("limit", 20),
+            }
+        except Exception as e:
+            print("⚠️ Ollama JSON invalid:", e)
+            
+    # CAS 2 : fallback local garanti    
+    parsed = parse_query(query)
+    print("🧠 Using local parser fallback")
+    return parse_query(query)
+
+# =========================================================
+# #. RECHERCHE FICHIERS
+# =========================================================
 def search_files(keywords: list[str], extensions: list[str], sort: str = "date_desc", limit: int = 20):
     results = []
     base_path = Path("E:/")
 
+    keywords = keywords or ["*"]
+    extensions = extensions or ["pdf"]
+    
     for ext in extensions:
         for file in base_path.rglob(f"*.{ext}"):
             name_lower = file.name.lower()
+            
+            # wildcard = tout accepter
+            if "*" in keywords:
+                results.append(file)
+                continue
+            
             # Le fichier doit contenir AU MOINS un des mots-clés
             if any(kw.lower() in name_lower for kw in keywords):
                 results.append(file)
@@ -179,84 +204,63 @@ def search_files(keywords: list[str], extensions: list[str], sort: str = "date_d
     # Tri par date de modification (le plus récent en premier)
     if sort == "date_desc":
         results.sort(key=lambda f: f.stat().st_mtime, reverse=True)
+        
     #Limite après trie
     results = results[:limit]
 
-    formatted_results = []
-    # Pour chaque chemin de fichier créer le lien 
-    for file in results:
-        formatted_results.append({
-            "name": file.name,
-            "path": str(file),
-            "url": f"file:///{str(file).replace('\\', '/')}"
-        })
+    # Pour chaque chemin de fichier créer un lien 
+    return [
+        {
+            "name": f.name,
+            "path": str(f),
+            "url": f"file:///{str(f).replace('\\', '/')}"
+        }
+        for f in results
+    ]
 
-    return formatted_results
 
-# Analyse la demande et créer la query pour ollama ou syst local
-async def analyze_query(query: str):
-
-    try:
-
-        raw = await parse_query_with_ollama(query)
-
-        start = raw.index("{")
-        end = raw.rindex("}") + 1
-
-        parsed = json.loads(raw[start:end])
-
-        print("✅ Ollama utilisé")
-
-        return parsed
-
-    except Exception as e:
-
-        print("⚠️ Ollama indisponible :", e)
-
-        parsed = parse_query(query)
-
-        print("🧠 Parser local utilisé")
-
-        return parsed
-    
-# Création de la réponse
+        
+# =========================================================
+# #. FORMAT DE RÉPONSE
+# =========================================================
 def build_search_response(files, parsed):
 
     keywords = parsed.get("keywords", [])
 
     if files:
-
         reply = (
             f"J'ai trouvé {len(files)} fichier(s) "
             f"correspondant à ta recherche."
         )
-
     else:
-
         reply = (
             "Aucun fichier trouvé pour : "
             + ", ".join(keywords)
         )
-
     return {
         "reply": reply,
         "files": files
     }
 
 
-# Gestion du message et retour de fichier    
+# =========================================================
+# #. ENDPOINT PRINCIPAL CHAT
+# =========================================================    
 @app.post("/chat")
 async def chat(request: ChatRequest):
+    
 # Le dernier message de l'utilisateur
     last_message = request.messages[-1].content
+    
 # analyse de la demande
     parsed = await analyze_query(last_message)
+    
 #recherche sur le disque
     files = search_files(
-        parsed.get("keywords", []),
-        parsed.get("extensions", ["pdf"]),
-        parsed.get("sort", "date_desc"),
-        parsed.get("limit", 20)
+        parsed.get("keywords"),
+        parsed.get("extensions"),
+        parsed.get("sort"),
+        parsed.get("limit"),
     )
 
     return build_search_response(files, parsed)
