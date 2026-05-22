@@ -152,7 +152,7 @@ Demande utilisateur :
 
         return json.loads(raw[start:end])
     except Exception as e:
-        print("⚠️ Ollama error:", e)
+        print(f"⚠️ Ollama error ({type(e).__name__}): {e}")
         return None
 
 # 
