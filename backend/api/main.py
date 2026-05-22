@@ -143,22 +143,26 @@ Règles :
 Demande utilisateur :
 {query}
 """
+    try:
+        async with httpx.AsyncClient() as client:
 
-    async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "http://127.0.0.1:11434/api/generate",
+                json={
+                    "model": "llama3",
+                    "prompt": prompt,
+                    "stream": False
+                },
+                timeout=60.0
+            )
+        response.raise_for_status()
+        data = response.json()
 
-        response = await client.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": "llama3",
-                "prompt": prompt,
-                "stream": False
-            },
-            timeout=60.0
-        )
+        return data["response"]
+    except:
+        print("⚠️ Ollama indisponible :", e)
+        raise
 
-    data = response.json()
-
-    return data["response"]
 
 # Recherche et création du lien vers le fichier
 def search_files(keywords: list[str], extensions: list[str], sort: str = "date_desc", limit: int = 20):
