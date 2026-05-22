@@ -70,10 +70,16 @@ export default function App() {
                 {/* Fichiers retournés par la recherche */}
                 {msg.files && msg.files.length > 0 && (
                   <div className="ai-files">
-                    {msg.files.map((path, j) => (
+                    {msg.files.map((file, j) => (
                       <div key={j} className="ai-file-item">
-                        <span className="ai-file-icon">📄</span>
-                        <span className="ai-file-path">{path}</span>
+                        <a
+                          href={file.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ai-file-link"
+                        >
+                          📄 {file.name}
+                        </a>
                       </div>
                     ))}
                   </div>
