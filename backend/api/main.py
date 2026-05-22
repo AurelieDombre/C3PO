@@ -29,49 +29,28 @@ def parse_query(query: str):
     # On met tout en minuscules pour éviter les problèmes :
     query = query.lower()
 
-    # Dictionnaire de traduction
-    #
-    # Si l'utilisateur écrit :
-    # "images"
-    #
-    # alors on comprend :
-    # "*.png"
-    #
-    # Tu peux ajouter plein de synonymes ici.
-    extensions_map = {
-        "pdf": "pdf",
-        "image": "png",
-        "images": "png",
-        "photo": "jpg",
-        "photos": "jpg",
-        "document": "docx",
-    }
-
-    # Variable qui contiendra l'extension détectée. Exemple : "pdf"
-    extension = None
-
-    # On parcourt tous les mots-clés du dictionnaire. Exemple : word = "pdf";  ext = "pdf"
-    # puis :
-    # word = "image"
-    # ext = "png"
-    for word, ext in extensions_map.items():
-        # Si le mot est présent dans la phrase utilisateur. Exemple :"cherche mes pdf" alors : extension = "pdf"
-        if word in query:
-            extension = ext
-
     # Liste des mots inutiles. On veut les supprimer. Exemple : "cherche mes pdf facture" devient : "facture"
-    blacklist = [
+    blacklist = {
         "cherche",
         "trouve",
+        "moi",
+        "mon",
         "mes",
+        "le",
+        "la",
         "les",
-        "des",
         "de",
-        "pdf",
-        "images",
-        "image",
-        "photos",
-    ]
+        "des",
+        "du",
+        "un",
+        "une",
+        "et",
+        "ou",
+        "dans",
+        "sur",
+        "avec",
+        "pour",
+    }
     # On découpe la phrase en mots
     # Exemple :
     # "cherche mes pdf facture"
@@ -87,12 +66,10 @@ def parse_query(query: str):
     # On retourne le résultat final
     # Exemple :
     # {
-    #   "extension": "pdf",
     #   "keyword": "facture"
     # }
     return {
         "keywords": keywords if keywords else ["*"],
-        "extensions": [extension] if extension else ["pdf"],
         "sort": "date_desc",
         "limit": 20
     }
@@ -105,29 +82,28 @@ async def parse_query_with_ollama(query: str):
     # Prompt envoyé au modèle LLM (Ollama)
     # Objectif : forcer une réponse STRICTEMENT en JSON
     prompt = f"""
-Return ONLY valid JSON:
+    Return ONLY valid JSON:
 
-Exemple :
+    Exemple :
 
-{
-    "intent": "search_files",
-    "keywords": ["avis", "imposition"],
-    "extensions": ["pdf"],
-    "sort": "date_desc",
-}
+    {{
+        "intent": "search_files",
+        "keywords": ["avis", "imposition"],
+        "sort": "date_desc",
+    }}
 
-Règles :
-- Si l'utilisateur demande "dernier", "plus récent", "latest", alors :
-    "sort": "date_desc",
-    "last": true,
-    "limit": 1
+    Règles :
+    - Si l'utilisateur demande "dernier", "plus récent", "latest", alors :
+        "sort": "date_desc",
+        "last": true,
+        "limit": 1
 
-- Si aucun type de fichier n'est précisé :
-    utilise ["pdf"]
+    - Si aucun type de fichier n'est précisé :
+        utilise ["pdf"]
 
-Demande utilisateur :
-{query}
-"""
+    Demande utilisateur :
+    {query}
+    """
 
     try:
         # Création d’un client HTTP asynchrone avec timeout de sécurité parce qu'il faut que fastapi soit pret
@@ -195,7 +171,6 @@ async def analyze_query(query: str):
         try:
             return {
                 "keywords": parsed.get("keywords") or ["*"],
-                "extensions": parsed.get("extensions") or ["pdf"],
                 "sort": parsed.get("sort", "date_desc"),
                 "limit": parsed.get("limit", 20),
             }
@@ -210,43 +185,104 @@ async def analyze_query(query: str):
 # =========================================================
 # #. RECHERCHE FICHIERS
 # =========================================================
-def search_files(keywords: list[str], extensions: list[str], sort: str = "date_desc", limit: int = 20):
+def search_files(
+    keywords: list[str],
+    sort: str = "date_desc",
+    limit: int = 20
+):
+
+    # Liste des résultats trouvés
     results = []
+
+    # Dossier racine à scanner
     base_path = Path("E:/")
 
+    # Sécurité :
+    # si aucun mot-clé → wildcard
     keywords = keywords or ["*"]
-    extensions = extensions or ["pdf"]
-    
-    for ext in extensions:
-        for file in base_path.rglob(f"*.{ext}"):
-            name_lower = file.name.lower()
-            
-            # wildcard = tout accepter
-            if "*" in keywords:
-                results.append(file)
-                continue
-            
-            # Le fichier doit contenir AU MOINS un des mots-clés
-            if any(kw.lower() in name_lower for kw in keywords):
-                results.append(file)
-                
-    # Tri par date de modification (le plus récent en premier)
+
+    # Scan récursif de TOUS les fichiers
+    for file in base_path.rglob("*"):
+
+        # Ignore les dossiers
+        if not file.is_file():
+            continue
+
+        # Nom du fichier en minuscule
+        # pour comparaison insensible à la casse
+        name_lower = file.name.lower()
+
+        # Score de pertinence du fichier
+        score = 0
+
+        # WILDCARD
+        # Si "*" présent :
+        # on accepte tous les fichiers
+        if "*" in keywords:
+
+            score = 1
+
+        else:
+
+            # CALCUL DU SCORE
+
+            for kw in keywords:
+
+                kw = kw.lower()
+
+                # Ignore mots trop courts
+                if len(kw) <= 2:
+                    continue
+
+                # Mot-clé présent dans le nom
+                if kw in name_lower:
+
+                    # Score de base
+                    score += 10
+
+                    # Bonus si le fichier commence par le mot
+                    if name_lower.startswith(kw):
+                        score += 20
+
+        # Ignore les fichiers sans pertinence
+        if score == 0:
+            continue
+
+        # Ajout du fichier + score
+        results.append((score, file))
+
+    # TRI DES RÉSULTATS
+    # Tri par pertinence puis date
     if sort == "date_desc":
-        results.sort(key=lambda f: f.stat().st_mtime, reverse=True)
-        
-    #Limite après trie
+
+        results.sort(
+            key=lambda x: (
+                -x[0],                  # score DESC
+                -x[1].stat().st_mtime  # date DESC
+            )
+        )
+
+    # Limite après tri
     results = results[:limit]
 
-    # Pour chaque chemin de fichier créer un lien 
+    # FORMAT FINAL
+
+    # Pour chaque chemin de fichier :
+    # création d’un lien ouvrable
     return [
         {
-            "name": f.name,
-            "path": str(f),
-            "url": f"file:///{str(f).replace('\\', '/')}"
-        }
-        for f in results
-    ]
+            "name": file.name,
+            "path": str(file),
 
+            # URL compatible navigateur / frontend
+            "url": f"file:///{str(file).replace('\\', '/')}",
+
+            # Debug / pertinence
+            "score": score
+        }
+
+        for score, file in results
+    ]
 
         
 # =========================================================
@@ -287,7 +323,6 @@ async def chat(request: ChatRequest):
 #recherche sur le disque
     files = search_files(
         parsed.get("keywords"),
-        parsed.get("extensions"),
         parsed.get("sort"),
         parsed.get("limit"),
     )

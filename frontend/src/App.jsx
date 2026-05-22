@@ -49,7 +49,7 @@ export default function App() {
           {/* Header */}
           <div className="ai-header">
             <div className="ai-header-dot" />
-            <span className="ai-header-title">Assistant IA Local</span>
+            <span className="ai-header-title">C3PO Assistant IA Local</span>
             <span className="ai-header-sub">ollama · local</span>
           </div>
  
@@ -65,7 +65,7 @@ export default function App() {
             {messages.map((msg, i) => (
               <div key={i} className={`ai-msg ai-msg--${msg.role}`}>
                 <span className="ai-msg-label">
-                  {msg.role === "user" ? "Vous" : "Assistant"}
+                  {msg.role === "user" ? "Vous" : "C3PO"}
                 </span>
                 <div className="ai-bubble">{msg.content}</div>
                 {/* Fichiers retournés par la recherche */}
@@ -90,7 +90,9 @@ export default function App() {
  
             {loading && (
               <div className="ai-msg ai-msg--assistant">
-                <span className="ai-msg-label">Assistant</span>
+                <span className="ai-msg-label">
+                  C3PO
+                  </span>
                 <div className="ai-typing">
                   <span /><span /><span />
                 </div>

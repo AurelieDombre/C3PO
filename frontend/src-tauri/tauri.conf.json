@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "c3po",
+        "title": "C3PO",
         "width": 400,
         "height": 600,
         "resizable": true,
