@@ -153,6 +153,11 @@
   word-break: break-all;
 }
 
+.ai-file-link{
+  text-decoration: none;
+  color: #4ade9e;
+}
+
  /* Empty state */
  .ai-empty {
    flex: 1;

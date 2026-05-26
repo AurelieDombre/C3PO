@@ -98,9 +98,6 @@ async def parse_query_with_ollama(query: str):
         "last": true,
         "limit": 1
 
-    - Si aucun type de fichier n'est précisé :
-        utilise ["pdf"]
-
     Demande utilisateur :
     {query}
     """
