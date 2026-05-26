@@ -3,6 +3,8 @@ from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from api.schema import Message, ChatRequest
 import httpx
+from fastapi import HTTPException
+import os
 import json
 
 
@@ -304,6 +306,25 @@ def build_search_response(files, parsed):
         "files": files
     }
 
+
+# =========================================================
+# #. OUVRIR LES FICHIERS
+# =========================================================   
+@app.post("/open-file")
+def open_file(payload: dict):
+    path = payload.get("path")
+    if not path:
+        raise HTTPException(status_code=400, detail="Missing file path")
+
+    file_path = Path(path)
+    if not file_path.exists() or not file_path.is_file():
+        raise HTTPException(status_code=404, detail="File not found")
+
+    try:
+        os.startfile(str(file_path))
+        return {"ok": True}
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot open file: {exc}") from exc
 
 # =========================================================
 # #. ENDPOINT PRINCIPAL CHAT
