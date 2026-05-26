@@ -98,7 +98,7 @@ export default function App() {
                           className="ai-file-link"
                           onClick={() => handleOpenFile(file.path)}
                         >
-                          📄 {file.name}
+                          {file.type === "folder" ? "📁" : "📄"} {file.name}
                         </button>
                       </div>
                     ))}

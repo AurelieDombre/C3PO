@@ -179,87 +179,81 @@ async def analyze_query(query: str):
     print("🧠 Using local parser fallback")
     return parse_query(query)
 
+
+def rglob_safe(path):
+    try:
+        for item in path.iterdir():
+            yield item
+            if item.is_dir():
+                yield from rglob_safe(item)
+    except PermissionError:
+        pass
+    except OSError:
+        pass
+    
 # =========================================================
 # #. RECHERCHE FICHIERS
 # =========================================================
 def search_files(
     keywords: list[str],
-    sort: str = "date_desc",
     limit: int = 20
 ):
 
-    # Liste des résultats trouvés
-    results = []
-
     # Dossier racine à scanner
     base_path = Path("E:/")
-
     # Sécurité :
     # si aucun mot-clé → wildcard
-    keywords = keywords or ["*"]
+    keywords = [kw.lower() for kw in (keywords or ["*"])]
+        # Liste des résultats trouvés
+    results = []
 
     # Scan récursif de TOUS les fichiers
-    for file in base_path.rglob("*"):
-
-        # Ignore les dossiers
-        if not file.is_file():
-            continue
-
+    for item in rglob_safe(base_path):
+        print(item)
         # Nom du fichier en minuscule
         # pour comparaison insensible à la casse
-        name_lower = file.name.lower()
-
-        # Score de pertinence du fichier
-        score = 0
-
+        name_lower = item.name.lower()
+        full_path_lower = str(item).lower()
+        
         # WILDCARD
         # Si "*" présent :
         # on accepte tous les fichiers
         if "*" in keywords:
-
-            score = 1
-
-        else:
-
+            results.append((0, item))
+            continue
+        score = 0
+        
             # CALCUL DU SCORE
-
-            for kw in keywords:
-
-                kw = kw.lower()
-
-                # Ignore mots trop courts
-                if len(kw) <= 2:
-                    continue
-
-                # Mot-clé présent dans le nom
-                if kw in name_lower:
-
-                    # Score de base
-                    score += 10
-
-                    # Bonus si le fichier commence par le mot
-                    if name_lower.startswith(kw):
-                        score += 20
+        for kw in keywords:
+            # Ignore mots trop courts
+            if len(kw) <= 2:
+                continue
+            # Correspondance exacte sur le nom → priorité absolue
+            if name_lower == kw:
+                score += 100
+            # Nom commence par le mot-clé
+            if name_lower.startswith(kw):
+                score += 40
+            # Mot-clé dans le nom
+            if kw in name_lower:
+                score += 20
+            # Mot-clé est un dossier parent dans le chemin
+            if f"\\{kw}\\" in full_path_lower or full_path_lower.endswith(f"\\{kw}"):
+                score += 5
 
         # Ignore les fichiers sans pertinence
         if score == 0:
             continue
+        # Les dossiers remontent avant les fichiers à score égal
+        if item.is_dir():
+            score += 10
 
         # Ajout du fichier + score
-        results.append((score, file))
+        results.append((score, item))
 
     # TRI DES RÉSULTATS
-    # Tri par pertinence puis date
-    if sort == "date_desc":
-
-        results.sort(
-            key=lambda x: (
-                -x[0],                  # score DESC
-                -x[1].stat().st_mtime  # date DESC
-            )
-        )
-
-    # Limite après tri
+    # Tri par score DESC puis date DESC
+    results.sort(key=lambda x: (-x[0], -x[1].stat().st_mtime))
     results = results[:limit]
 
     # FORMAT FINAL
@@ -268,17 +262,15 @@ def search_files(
     # création d’un lien ouvrable
     return [
         {
-            "name": file.name,
-            "path": str(file),
-            
-            # URL compatible navigateur / frontend
-            #"url": f"file:///{str(file).replace('\\', '/')}",
+            "name": item.name,
+            "path": str(item),
+            "type": "folder" if item.is_dir() else "file",
 
             # Debug / pertinence
             "score": score
         }
 
-        for score, file in results
+        for score, item in results
     ]
 
         
@@ -291,12 +283,12 @@ def build_search_response(files, parsed):
 
     if files:
         reply = (
-            f"J'ai trouvé {len(files)} fichier(s) "
+            f"J'ai trouvé {len(files)} résultat(s) "
             f"correspondant à ta recherche."
         )
     else:
         reply = (
-            "Aucun fichier trouvé pour : "
+            "Aucun résultat trouvé pour : "
             + ", ".join(keywords)
         )
     return {
@@ -320,7 +312,7 @@ async def chat(request: ChatRequest):
 #recherche sur le disque
     files = search_files(
         parsed.get("keywords"),
-        parsed.get("sort"),
+        #parsed.get("sort"),
         parsed.get("limit"),
     )
 
