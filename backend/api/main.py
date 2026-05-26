@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from api.schema import ChatRequest
 import httpx
 import json
+from components.score import compute_score
+from components.format_item import format_item, rglob_safe
 
 
 app = FastAPI()
@@ -180,24 +182,14 @@ async def analyze_query(query: str):
     return parse_query(query)
 
 
-def rglob_safe(path):
-    try:
-        for item in path.iterdir():
-            yield item
-            if item.is_dir():
-                yield from rglob_safe(item)
-    except PermissionError:
-        pass
-    except OSError:
-        pass
-    
+
 # =========================================================
 # #. RECHERCHE FICHIERS
 # =========================================================
 def search_files(
     keywords: list[str],
     limit: int = 20
-):
+) -> list[dict]:
 
     # Dossier racine à scanner
     base_path = Path("E:/")
@@ -209,47 +201,20 @@ def search_files(
 
     # Scan récursif de TOUS les fichiers
     for item in rglob_safe(base_path):
-        print(item)
-        # Nom du fichier en minuscule
-        # pour comparaison insensible à la casse
-        name_lower = item.name.lower()
-        full_path_lower = str(item).lower()
-        
-        # WILDCARD
+
         # Si "*" présent :
         # on accepte tous les fichiers
         if "*" in keywords:
             results.append((0, item))
             continue
-        score = 0
         
-            # CALCUL DU SCORE
-        for kw in keywords:
-            # Ignore mots trop courts
-            if len(kw) <= 2:
-                continue
-            # Correspondance exacte sur le nom → priorité absolue
-            if name_lower == kw:
-                score += 100
-            # Nom commence par le mot-clé
-            if name_lower.startswith(kw):
-                score += 40
-            # Mot-clé dans le nom
-            if kw in name_lower:
-                score += 20
-            # Mot-clé est un dossier parent dans le chemin
-            if f"\\{kw}\\" in full_path_lower or full_path_lower.endswith(f"\\{kw}"):
-                score += 5
+        score = compute_score(item, keywords)
+        
 
-        # Ignore les fichiers sans pertinence
-        if score == 0:
-            continue
-        # Les dossiers remontent avant les fichiers à score égal
-        if item.is_dir():
-            score += 10
-
-        # Ajout du fichier + score
-        results.append((score, item))
+        # Ignore les fichiers sans pertinence soit = 0
+        if score > 0:
+            # Ajout du fichier + score
+            results.append((score, item))
 
     # TRI DES RÉSULTATS
     # Tri par score DESC puis date DESC
@@ -257,21 +222,8 @@ def search_files(
     results = results[:limit]
 
     # FORMAT FINAL
-
-    # Pour chaque chemin de fichier :
     # création d’un lien ouvrable
-    return [
-        {
-            "name": item.name,
-            "path": str(item),
-            "type": "folder" if item.is_dir() else "file",
-
-            # Debug / pertinence
-            "score": score
-        }
-
-        for score, item in results
-    ]
+    return [format_item(item, score) for score, item in results]
 
         
 # =========================================================
