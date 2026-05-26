@@ -206,10 +206,16 @@ def search_files(
     results.sort(key=lambda x: (-x[0], -x[1].stat().st_mtime))
     
     # Si le premier résultat est un dossier exact → on retourne uniquement lui
+    #"Si la liste des résultats n'est pas vide et que le premier résultat est un dossier." 
+    # results[0] est un tuple (score, item), donc results[0][1] 
+    # c'est l'item (le Path), et .is_dir() vérifie que c'est un dossier.
     if results and results[0][1].is_dir():
         top_score, top_item = results[0]
+        # On décompose le tuple (score, item) en deux variables séparées pour plus de lisibilité.
         top_name = top_item.name.lower()
+        # On récupère juste le nom du dossier en minuscules. Par exemple E:\Important\Australie → "australie".
         if any(top_name == kw for kw in keywords):
+            # Si tout ça est vrai, on retourne uniquement ce dossier dans une liste
             return [format_item(top_item, top_score)]
         
     results = results[:limit]
