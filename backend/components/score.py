@@ -1,3 +1,5 @@
+from pathlib import Path
+
 # =========================================================
 # #. CALCUL DU SCORE (pour les correspondances mots clés -> dossiers et fichiers)
 # =========================================================

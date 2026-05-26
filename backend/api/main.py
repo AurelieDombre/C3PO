@@ -6,6 +6,7 @@ import httpx
 import json
 from components.score import compute_score
 from components.format_item import format_item, rglob_safe
+from components.blacklist import blacklist
 
 
 app = FastAPI()
@@ -31,28 +32,6 @@ def parse_query(query: str):
     # On met tout en minuscules pour éviter les problèmes :
     query = query.lower()
 
-    # Liste des mots inutiles. On veut les supprimer. Exemple : "cherche mes pdf facture" devient : "facture"
-    blacklist = {
-        "cherche",
-        "trouve",
-        "moi",
-        "mon",
-        "mes",
-        "le",
-        "la",
-        "les",
-        "de",
-        "des",
-        "du",
-        "un",
-        "une",
-        "et",
-        "ou",
-        "dans",
-        "sur",
-        "avec",
-        "pour",
-    }
     # On découpe la phrase en mots
     # Exemple :
     # "cherche mes pdf facture"
@@ -83,6 +62,7 @@ async def parse_query_with_ollama(query: str):
 
     # Prompt envoyé au modèle LLM (Ollama)
     # Objectif : forcer une réponse STRICTEMENT en JSON
+    blacklist_str = ", ".join(sorted(blacklist))
     prompt = f"""
     Return ONLY valid JSON:
 
@@ -99,6 +79,10 @@ async def parse_query_with_ollama(query: str):
         "sort": "date_desc",
         "last": true,
         "limit": 1
+    - Extrais UNIQUEMENT le nom du fichier ou dossier recherché
+    - Ignore les mots de la {blacklist_str}
+
+
 
     Demande utilisateur :
     {query}
@@ -167,6 +151,7 @@ async def analyze_query(query: str):
     parsed = await parse_query_with_ollama(query)
     # CAS 1 : Ollama OK
     if parsed:
+        print("🤖 Ollama retourne:", parsed)
         try:
             return {
                 "keywords": parsed.get("keywords") or ["*"],
@@ -219,6 +204,14 @@ def search_files(
     # TRI DES RÉSULTATS
     # Tri par score DESC puis date DESC
     results.sort(key=lambda x: (-x[0], -x[1].stat().st_mtime))
+    
+    # Si le premier résultat est un dossier exact → on retourne uniquement lui
+    if results and results[0][1].is_dir():
+        top_score, top_item = results[0]
+        top_name = top_item.name.lower()
+        if any(top_name == kw for kw in keywords):
+            return [format_item(top_item, top_score)]
+        
     results = results[:limit]
 
     # FORMAT FINAL
