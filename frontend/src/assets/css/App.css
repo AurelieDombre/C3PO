@@ -153,9 +153,13 @@
   word-break: break-all;
 }
 
-.ai-file-link{
-  text-decoration: none;
+
+.ai-file-link {
+  background: none;
+  border: none;
   color: #4ade9e;
+  cursor: pointer;
+  text-decoration: underline;
 }
 
  /* Empty state */

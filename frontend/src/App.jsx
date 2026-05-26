@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import "./assets/css/App.css"
+import { openPath } from "@tauri-apps/plugin-opener";
 
 export default function App() {
   const API = import.meta.env.VITE_API_URL;
@@ -40,7 +41,27 @@ export default function App() {
       setTimeout(() => inputRef.current?.focus(), 50);
     }
   }
- 
+
+  async function handleOpenFile(path) {
+
+    try {
+      /* "open()" natif dans tauri pour ouvrir un fichier */
+      await openPath(path);
+
+    } catch (err) {
+
+      console.error(err);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: "Impossible d'ouvrir ce fichier."
+        }
+      ]);
+    }
+  }
+
   return (
 
       <div className="ai-root">
@@ -73,14 +94,12 @@ export default function App() {
                   <div className="ai-files">
                     {msg.files.map((file, j) => (
                       <div key={j} className="ai-file-item">
-                        <a
-                          href={file.url}
-                          target="_blank"
-                          rel="noreferrer"
+                        <button
                           className="ai-file-link"
+                          onClick={() => handleOpenFile(file.path)}
                         >
                           📄 {file.name}
-                        </a>
+                        </button>
                       </div>
                     ))}
                   </div>
