@@ -1,9 +1,15 @@
 import { useState, useRef, useEffect } from "react";
 import "./assets/css/App.css"
 import { openPath } from "@tauri-apps/plugin-opener";
+// Pour installation du bot
+import OllamaGate from "./components/OllamaGate";
+import { useOllama } from "./hooks/useOllama";
 
 export default function App() {
   const API = import.meta.env.VITE_API_URL;
+  // Appel au hook pour installation
+  const ollama = useOllama();
+
   const [messages, setMessages] = useState([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -63,7 +69,7 @@ export default function App() {
   }
 
   return (
-
+    <OllamaGate ollama={ollama}>
       <div className="ai-root">
         <div className="ai-shell">
  
@@ -148,6 +154,6 @@ export default function App() {
  
         </div>
       </div>
-
+    </OllamaGate>
   );
 }
