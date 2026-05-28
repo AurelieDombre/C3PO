@@ -4,9 +4,22 @@ import { openPath } from "@tauri-apps/plugin-opener";
 // Pour installation du bot
 import OllamaGate from "./components/OllamaGate";
 import { useOllama } from "../hook/useOllama";
+// Permettre de choisir le dossier dans lequel sont nos documents…,
+import SearchPathConfig from "../components/SearchPathConfig";
 
 export default function App() {
-  const API = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  const rawApi = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+  const API = (() => {
+    try {
+      const url = new URL(rawApi);
+      if (url.hostname === "localhost") {
+        url.hostname = "127.0.0.1";
+      }
+      return url.toString().replace(/\/$/, "");
+    } catch {
+      return "http://127.0.0.1:8000";
+    }
+  })();
   // Appel au hook pour installation
   const ollama = useOllama();
 
@@ -23,21 +36,38 @@ export default function App() {
   async function handleSearch() {
     const text = query.trim();
     if (!text || loading) return;
- 
+
     const newMessages = [...messages, { role: "user", content: text }];
     setMessages(newMessages);
     setQuery("");
     setLoading(true);
- 
+    //Sauvegarde le base_path (ex : "D:/")
+    const savedPaths = JSON.parse(
+          localStorage.getItem("search_paths") || "[]"
+        );
     try {
       const response = await fetch(`${API}/chat`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: newMessages }),
+        body: JSON.stringify({
+          messages: newMessages,
+          paths: savedPaths,
+        }),
       });
-      const data = await response.json();
+
+      const rawBody = await response.text();
+      let data = null;
+
+      if (rawBody) {
+        try {
+          data = JSON.parse(rawBody);
+        } catch {
+          data = null;
+        }
+      }
+
       if (!response.ok) {
-        throw new Error(data?.detail || `HTTP ${response.status}`);
+        throw new Error(data?.detail || rawBody || `HTTP ${response.status}`);
       }
       setMessages([...newMessages, { role: "assistant", content: data.reply, files: data.files }]);
     } catch (err) {
@@ -83,7 +113,7 @@ export default function App() {
             <span className="ai-header-title">C3PO Assistant IA Local</span>
             <span className="ai-header-sub">ollama · local</span>
           </div>
- 
+          <SearchPathConfig />
           {/* Messages */}
           <div className="ai-messages">
             {messages.length === 0 && (

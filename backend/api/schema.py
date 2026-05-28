@@ -8,3 +8,4 @@ class Message(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: List[Message]
+    paths: List[str] = []

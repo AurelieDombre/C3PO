@@ -1,4 +1,8 @@
+from api.runtime_stdio import ensure_backend_stdio
+ensure_backend_stdio()
+
 from fastapi import FastAPI
+from fastapi import HTTPException
 from pathlib import Path
 from fastapi.middleware.cors import CORSMiddleware
 from api.schema import ChatRequest
@@ -54,6 +58,20 @@ def parse_query(query: str):
         "sort": "date_desc",
         "limit": 20
     }
+
+
+def _is_dir_safe(item: Path) -> bool:
+    try:
+        return item.is_dir()
+    except OSError:
+        return False
+
+
+def _safe_mtime(item: Path) -> float:
+    try:
+        return item.stat().st_mtime
+    except OSError:
+        return 0.0
 
 # =========================================================
 # #. OLLAMA PARSER 
@@ -139,7 +157,7 @@ async def parse_query_with_ollama(query: str):
         # - timeout réseau
         # - JSON invalide
         # - erreur HTTP
-        print(f"⚠️ Ollama error ({type(e).__name__}): {e}")
+        print(f"[Ollama error] {type(e).__name__}: {e}")
 
         # Retour sécurisé : fallback vers parser local
         return None
@@ -151,7 +169,7 @@ async def analyze_query(query: str):
     parsed = await parse_query_with_ollama(query)
     # CAS 1 : Ollama OK
     if parsed:
-        print("🤖 Ollama retourne:", parsed)
+        print("[Ollama] response:", parsed)
         try:
             return {
                 "keywords": parsed.get("keywords") or ["*"],
@@ -159,11 +177,11 @@ async def analyze_query(query: str):
                 "limit": parsed.get("limit", 20),
             }
         except Exception as e:
-            print("⚠️ Ollama JSON invalid:", e)
+            print("[Ollama JSON invalid]", e)
             
     # CAS 2 : fallback local garanti    
     parsed = parse_query(query)
-    print("🧠 Using local parser fallback")
+    print("[Fallback] Using local parser")
     return parse_query(query)
 
 
@@ -173,11 +191,15 @@ async def analyze_query(query: str):
 # =========================================================
 def search_files(
     keywords: list[str],
+    paths: list[str],
     limit: int = 20
 ) -> list[dict]:
 
     # Dossier racine à scanner
-    base_path = Path.home()
+    base_paths = [Path(p) for p in paths if Path(p).exists()]
+
+    if not base_paths:
+        base_paths = [Path.home()]
     # Sécurité :
     # si aucun mot-clé → wildcard
     keywords = [kw.lower() for kw in (keywords or ["*"])]
@@ -185,31 +207,32 @@ def search_files(
     results = []
 
     # Scan récursif de TOUS les fichiers
-    for item in rglob_safe(base_path):
+    for base_path in base_paths:
+        for item in rglob_safe(base_path):
 
-        # Si "*" présent :
-        # on accepte tous les fichiers
-        if "*" in keywords:
-            results.append((0, item))
-            continue
-        
-        score = compute_score(item, keywords)
-        
+            # Si "*" présent :
+            # on accepte tous les fichiers
+            if "*" in keywords:
+                results.append((0, item))
+                continue
 
-        # Ignore les fichiers sans pertinence soit = 0
-        if score > 0:
-            # Ajout du fichier + score
-            results.append((score, item))
+            score = compute_score(item, keywords)
+
+
+            # Ignore les fichiers sans pertinence soit = 0
+            if score > 0:
+                # Ajout du fichier + score
+                results.append((score, item))
 
     # TRI DES RÉSULTATS
     # Tri par score DESC puis date DESC
-    results.sort(key=lambda x: (-x[0], -x[1].stat().st_mtime))
+    results.sort(key=lambda x: (-x[0], -_safe_mtime(x[1])))
     
     # Si le premier résultat est un dossier exact → on retourne uniquement lui
     #"Si la liste des résultats n'est pas vide et que le premier résultat est un dossier." 
     # results[0] est un tuple (score, item), donc results[0][1] 
     # c'est l'item (le Path), et .is_dir() vérifie que c'est un dossier.
-    if results and results[0][1].is_dir():
+    if results and _is_dir_safe(results[0][1]):
         top_score, top_item = results[0]
         # On décompose le tuple (score, item) en deux variables séparées pour plus de lisibilité.
         top_name = top_item.name.lower()
@@ -253,21 +276,25 @@ def build_search_response(files, parsed):
 # =========================================================    
 @app.post("/chat")
 async def chat(request: ChatRequest):
-    
-# Le dernier message de l'utilisateur
-    last_message = request.messages[-1].content
-    
-# analyse de la demande
-    parsed = await analyze_query(last_message)
-    
-#recherche sur le disque
-    files = search_files(
-        parsed.get("keywords"),
-        #parsed.get("sort"),
-        parsed.get("limit"),
-    )
+    try:
+        # Le dernier message de l'utilisateur
+        last_message = request.messages[-1].content
 
-    return build_search_response(files, parsed)
+        # analyse de la demande
+        parsed = await analyze_query(last_message)
+
+        # recherche sur le disque
+        files = search_files(
+            parsed.get("keywords"),
+            request.paths,
+            # parsed.get("sort"),
+            parsed.get("limit"),
+        )
+
+        return build_search_response(files, parsed)
+    except Exception as e:
+        print(f"[chat error] {type(e).__name__}: {e}")
+        raise HTTPException(status_code=500, detail="Erreur interne du backend")
     
 # =========================================================
 # Endpoint healthcheck

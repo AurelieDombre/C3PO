@@ -3,11 +3,21 @@ from pathlib import Path
 # =========================================================
 # #. CALCUL DU SCORE (pour les correspondances mots clés -> dossiers et fichiers)
 # =========================================================
+def _is_dir_safe(item: Path) -> bool:
+    try:
+        return item.is_dir()
+    except OSError:
+        return False
+
+
 def compute_score(item: Path, keywords: list[str]) -> int:
     # Nom du fichier en minuscule
     # pour comparaison insensible à la casse
-    name_lower = item.name.lower()
-    full_path_lower = str(item).lower()
+    try:
+      name_lower = item.name.lower()
+      full_path_lower = str(item).lower()
+    except OSError:
+      return 0
     score = 0
 
     for kw in keywords:
@@ -27,7 +37,7 @@ def compute_score(item: Path, keywords: list[str]) -> int:
         if f"\\{kw}\\" in full_path_lower or full_path_lower.endswith(f"\\{kw}"):
             score += 5
     # Les dossiers remontent avant les fichiers à score égal
-    if item.is_dir() and score > 0:
+    if _is_dir_safe(item) and score > 0:
         score += 10
 
     return score

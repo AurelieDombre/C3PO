@@ -1,7 +1,7 @@
 from api.main import app
-import uvicorn
 
 if __name__ == "__main__":
+    import uvicorn
 
     uvicorn.run(
         app,
