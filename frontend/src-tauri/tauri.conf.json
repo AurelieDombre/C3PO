@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "C3PO",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "identifier": "com.c3po.app",
 
   "build": {
@@ -27,8 +27,8 @@
   "bundle": {
     "active": true,
     "targets": ["msi"],
-    "externalBin": [
-      "bin/start_backend"
+    "resources": [
+      "bin/start_backend/**/*"
     ],
     "icon": [
       "icons/icon.ico"

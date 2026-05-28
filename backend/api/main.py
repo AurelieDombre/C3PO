@@ -177,7 +177,7 @@ def search_files(
 ) -> list[dict]:
 
     # Dossier racine à scanner
-    base_path = Path("E:/")
+    base_path = Path.home()
     # Sécurité :
     # si aucun mot-clé → wildcard
     keywords = [kw.lower() for kw in (keywords or ["*"])]

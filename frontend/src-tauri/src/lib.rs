@@ -44,6 +44,16 @@ pub fn run() {
                 false
             }
 
+            fn wait_for_backend(max_tries: u32) -> bool {
+                for _ in 0..max_tries {
+                    if std::net::TcpStream::connect("127.0.0.1:8000").is_ok() {
+                        return true;
+                    }
+                    thread::sleep(Duration::from_millis(250));
+                }
+                false
+            }
+
             let ollama_available = is_ollama_running();
 
             let ollama_ready = if ollama_available {
@@ -66,17 +76,34 @@ pub fn run() {
             // =========================
             let backend_path = app
                 .path()
-                .resolve("start_backend.exe", tauri::path::BaseDirectory::Resource)
+                .resolve(
+                    "bin/start_backend/start_backend.exe",
+                    tauri::path::BaseDirectory::Resource,
+                )
                 .expect("backend introuvable");
 
-            let _backend = Command::new(backend_path)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
+            println!("Backend path: {:?}", backend_path);
+            println!("Launching backend...");
+
+            let backend = Command::new(backend_path)
+                .stdout(Stdio::inherit())
+                .stderr(Stdio::inherit())
                 .spawn();
 
-            if _backend.is_err() {
-                eprintln!("Backend introuvable (start_backend.exe)");
+            match backend {
+                Ok(child) => {
+                    std::mem::forget(child);
+                    if wait_for_backend(20) {
+                        println!("Backend started successfully");
+                    } else {
+                        eprintln!("Backend started but port 8000 is not reachable");
+                    }
+                }
+                Err(e) => {
+                    eprintln!("❌ Backend failed to start: {:?}", e);
+                }
             }
+
 
             Ok(())
         })

@@ -36,11 +36,15 @@ export default function App() {
         body: JSON.stringify({ messages: newMessages }),
       });
       const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data?.detail || `HTTP ${response.status}`);
+      }
       setMessages([...newMessages, { role: "assistant", content: data.reply, files: data.files }]);
-    } catch {
+    } catch (err) {
+      console.error(err);
       setMessages([
         ...newMessages,
-        { role: "assistant", content: "⚠️ Impossible de joindre le serveur local." },
+        { role: "assistant", content: `Impossible de joindre le serveur local${err?.message ? ` (${err.message})` : ""}.` },
       ]);
     } finally {
       setLoading(false);
