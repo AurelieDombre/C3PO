@@ -269,4 +269,22 @@ async def chat(request: ChatRequest):
 
     return build_search_response(files, parsed)
     
+# =========================================================
+# Endpoint healthcheck
+# =========================================================
+@app.get("/health")
+def health():
+    return {"status": "ok"} 
+    
 
+# =========================================================
+# START SERVER
+# =========================================================
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        app,
+        host="127.0.0.1",
+        port=8000
+    )
