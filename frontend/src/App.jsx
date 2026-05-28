@@ -3,7 +3,7 @@ import "./assets/css/App.css"
 import { openPath } from "@tauri-apps/plugin-opener";
 // Pour installation du bot
 import OllamaGate from "./components/OllamaGate";
-import { useOllama } from "./hooks/useOllama";
+import { useOllama } from "../hook/useOllama";
 
 export default function App() {
   const API = import.meta.env.VITE_API_URL;

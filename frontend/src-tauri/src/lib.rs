@@ -1,6 +1,8 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     use std::process::{Command, Stdio};
+    use std::time::Duration;
+    use std::thread;
     use tauri::Manager;
 
     tauri::Builder::default()
@@ -8,9 +10,15 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
 
+        .invoke_handler(tauri::generate_handler![
+            is_ollama_available
+        ])
+
         .setup(|app| {
 
-            // logs debug
+            // =========================
+            // LOGS DEBUG
+            // =========================
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -20,34 +28,54 @@ pub fn run() {
             }
 
             // =========================
-            // 1. DETECTION OLLAMA
+            // OLLAMA CHECK (FIABLE)
             // =========================
-            let ollama_available = Command::new("ollama")
-                .arg("--version")
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .output()
-                .is_ok();
+            fn is_ollama_running() -> bool {
+                std::net::TcpStream::connect("127.0.0.1:11434").is_ok()
+            }
 
-            // on stocke le résultat dans l'état global Tauri
+            fn wait_for_ollama(max_tries: u32) -> bool {
+                for _ in 0..max_tries {
+                    if std::net::TcpStream::connect("127.0.0.1:11434").is_ok() {
+                        return true;
+                    }
+                    thread::sleep(Duration::from_millis(500));
+                }
+                false
+            }
+
+            let ollama_available = is_ollama_running();
+
+            let ollama_ready = if ollama_available {
+                true
+            } else {
+                wait_for_ollama(5)
+            };
+
+            // =========================
+            // STATE GLOBAL
+            // =========================
             app.manage(OllamaState {
-                available: ollama_available,
+                available: ollama_ready,
             });
-            let ollama_version = Command::new("ollama")
-              .arg("--version")
-              .output()
-              .ok()
-              .and_then(|o| String::from_utf8(o.stdout).ok());
+            // wait minimal stabilisation runtime
+            std::thread::sleep(std::time::Duration::from_millis(500));
+
             // =========================
-            // 2. LANCEMENT BACKEND PYTHON
+            // BACKEND PYTHON
             // =========================
-            let _backend = Command::new("backend.exe")
+            let backend_path = app
+                .path()
+                .resolve("start_backend.exe", tauri::path::BaseDirectory::Resource)
+                .expect("backend introuvable");
+
+            let _backend = Command::new(backend_path)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
                 .spawn();
 
             if _backend.is_err() {
-                eprintln!("Backend introuvable (backend.exe)");
+                eprintln!("Backend introuvable (start_backend.exe)");
             }
 
             Ok(())
@@ -68,7 +96,7 @@ struct OllamaState {
 
 
 // =========================
-// COMMANDS ACCESSIBLES DEPUIS REACT
+// COMMANDS REACT
 // =========================
 #[tauri::command]
 fn is_ollama_available(state: tauri::State<OllamaState>) -> bool {
