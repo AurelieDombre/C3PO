@@ -1,3 +1,36 @@
 .venv
 /.venv
 .idea
+
+# venv
+.venv/
+
+# logs
+*.log
+
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.env
+./.env
+.env
+# Python build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# PyInstaller
+dist/
+build/
+*.spec
+
+# PyInstaller output
+_internal/
+start_backend.exe

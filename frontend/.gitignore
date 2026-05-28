@@ -25,3 +25,19 @@ dist-ssr
 *.env
 ./.env
 .env
+# Python build
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+# PyInstaller
+dist/
+build/
+*.spec
+
+# PyInstaller output
+_internal/
+start_backend.exe
+
+# venv
+.venv/
