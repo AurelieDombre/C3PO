@@ -1,5 +1,3 @@
-from api.runtime_stdio import ensure_backend_stdio
-ensure_backend_stdio()
 
 from fastapi import FastAPI
 from fastapi import HTTPException
