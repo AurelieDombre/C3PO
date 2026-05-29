@@ -8,14 +8,14 @@ cd backend
 
 call .venv\Scripts\activate
 
-pyinstaller --onefile --hidden-import=api.main --hidden-import=api.schema --hidden-import=components.score --hidden-import=components.format_item --hidden-import=components.blacklist --hidden-import=uvicorn start_backend.py
+pyinstaller --noconfirm --clean start_backend.spec
 
 echo =========================
 echo COPY BACKEND
 echo =========================
 
-if not exist ..\frontend\src-tauri\bin\start_backend mkdir ..\frontend\src-tauri\bin\start_backend
-copy /Y dist\start_backend.exe ..\frontend\src-tauri\bin\start_backend\start_backend.exe
+robocopy dist\start_backend ..\frontend\src-tauri\bin\start_backend /MIR /NFL /NDL /NJH /NJS /NP
+if %ERRORLEVEL% GEQ 8 exit /b %ERRORLEVEL%
 
 cd ..
 
