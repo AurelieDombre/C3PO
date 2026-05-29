@@ -1,62 +1,256 @@
-use serde::Serialize;
+use serde::{Serialize, Deserialize};
+use std::path::Path;
+use walkdir::WalkDir;
 
-// Ce fichier contient la partie Rust de l'application Tauri.
-// Rust joue ici le role de "backend local" : le front-end JavaScript appelle
-// ces fonctions pour executer du code natif.
+// reqwest = appel HTTP vers Ollama
+use reqwest::blocking::Client;
 
-// `Serialize` permet de transformer ces structs en JSON pour les renvoyer au
-// front-end.
-#[derive(Serialize)]
+// =========================================================
+// STRUCTURES DE DONNÉES
+// =========================================================
+
+// Résultat renvoyé au front React via Tauri
+// → converti automatiquement en JSON
+#[derive(Serialize, Clone)]
 struct SearchResult {
-    // Message principal renvoye a l'interface.
+    // message affiché dans le chat UI
     reply: String,
-    // Liste des fichiers trouves. Pour l'instant elle est vide, car la
-    // recherche n'est pas encore implemente.
+
+    // liste des fichiers trouvés
     files: Vec<FileItem>,
 }
 
-#[derive(Serialize)]
+// Représente un fichier dans les résultats
+#[derive(Serialize, Deserialize, Clone)]
 struct FileItem {
-    // Nom affiche dans l'UI.
+    // nom du fichier (affichage UI)
     name: String,
-    // Chemin complet du fichier sur le disque.
+
+    // chemin complet disque
     path: String,
-    // Type de fichier (pdf, txt, etc.).
+
+    // type (pdf, folder, txt, etc.)
     file_type: String,
 }
 
-// `#[tauri::command]` expose cette fonction au front-end.
-// Cote JavaScript, elle sera appelee avec `invoke("search_files", ...)`.
+// =========================================================
+// COMMANDE TAURI : SEARCH FILES
+// =========================================================
+
+// Cette fonction est exposée au front via :
+// invoke("search_files", { query, paths })
 #[tauri::command]
 fn search_files(query: String, paths: Vec<String>) -> SearchResult {
-    // `println!` ecrit dans la console du process Rust. C'est utile pour le
-    // debug, mais ce message n'apparait pas directement dans l'UI.
+
+    // log debug dans console Rust
     println!("Recherche : {}", query);
     println!("Paths : {:?}", paths);
 
-    // Ici on renvoie une reponse factice.
-    // `format!` construit une String.
-    // `vec![]` cree un vecteur vide.
+    // =====================================================
+    // 1. EXTRACTION DES MOTS CLÉS
+    // =====================================================
+
+    // "voyage italie" → ["voyage", "italie"]
+    let keywords: Vec<String> = query
+        .to_lowercase()
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .collect();
+
+    // stockage des résultats brut
+    let mut results: Vec<FileItem> = vec![];
+
+    // =====================================================
+    // 2. SCAN DES DOSSIERS
+    // =====================================================
+
+    for base in paths {
+
+        let base_path = Path::new(&base);
+
+        // ignore si dossier invalide
+        if !base_path.exists() {
+            continue;
+        }
+
+        // scan récursif du dossier
+        for entry in WalkDir::new(base_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
+            let path = entry.path();
+
+            // récupère nom fichier en string
+            let file_name = path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+
+            // =================================================
+            // 3. MATCH DES MOTS CLÉS
+            // =================================================
+
+            let matched = keywords.iter().any(|kw| {
+                file_name.contains(kw)
+            });
+
+            // si match → ajout résultat
+            if matched {
+
+                // détecte type fichier
+                let file_type = if path.is_dir() {
+                    "folder".to_string()
+                } else {
+                    path.extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("file")
+                        .to_string()
+                };
+
+                results.push(FileItem {
+                    name: path
+                        .file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("unknown")
+                        .to_string(),
+
+                    path: path.display().to_string(),
+
+                    file_type,
+                });
+
+                // sécurité : limite résultats
+                if results.len() >= 50 {
+                    break;
+                }
+            }
+        }
+    }
+
+    // =====================================================
+    // 4. OLLAMA (RE-RANK IA OPTIONNEL)
+    // =====================================================
+
+    let results = ollama_rank(&query, results);
+
+    // =====================================================
+    // 5. RÉPONSE FINALE
+    // =====================================================
+
+    let reply = if results.is_empty() {
+        format!("Aucun résultat trouvé pour : {}", query)
+    } else {
+        format!("{} résultat(s) trouvé(s)", results.len())
+    };
+
     SearchResult {
-        reply: format!("Recherche reçue : {}", query),
-        files: vec![],
+        reply,
+        files: results,
     }
 }
 
-// Point d'entree de l'application Tauri.
-// Sur mobile, cet attribut indique a Tauri quelle fonction utiliser comme
-// entree.
+// =========================================================
+// OLLAMA IA RANKING (API HTTP)
+// =========================================================
+
+// Cette fonction demande à Ollama de reclasser les résultats
+// selon la pertinence sémantique
+fn ollama_rank(query: &str, files: Vec<FileItem>) -> Vec<FileItem> {
+
+    // si aucun résultat → pas besoin d’IA
+    if files.is_empty() {
+        return files;
+    }
+
+    // construit liste compacte pour prompt
+    let input = files.iter()
+        .take(30)
+        .map(|f| format!("{} | {}", f.name, f.path))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    // prompt envoyé à l’IA
+    let prompt = format!(
+r#"
+Tu es un moteur de recherche intelligent.
+
+Utilisateur :
+{}
+
+Voici des fichiers candidats :
+
+{}
+
+Retourne UNIQUEMENT du JSON valide :
+[
+  {{"name":"...","path":"...","file_type":"..."}}
+]
+"#,
+        query, input
+    );
+
+    // client HTTP
+    let client = Client::new();
+
+    // appel API Ollama local
+    let response = client
+        .post("http://127.0.0.1:11434/api/generate")
+        .json(&serde_json::json!({
+            "model": "llama3",
+            "prompt": prompt,
+            "stream": false
+        }))
+        .send();
+
+    // si erreur HTTP → fallback direct
+    let Ok(response) = response else {
+        return files;
+    };
+
+    // parse JSON réponse Ollama
+    let json: serde_json::Value = match response.json() {
+        Ok(v) => v,
+        Err(_) => return files,
+    };
+
+    // texte généré par le modèle
+    let raw = json["response"].as_str().unwrap_or("");
+
+    // essaye de parser JSON IA
+    match serde_json::from_str::<Vec<FileItem>>(raw) {
+        Ok(v) => v,
+        Err(_) => files, // fallback safe
+    }
+}
+
+// =========================================================
+// POINT D’ENTRÉE TAURI
+// =========================================================
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // `Builder` construit l'application piece par piece.
-    // Les plugins ajoutent des capacites supplementaires au runtime Tauri.
+
     tauri::Builder::default()
+
+        // permet d’exécuter des commandes système si besoin
         .plugin(tauri_plugin_shell::init())
+
+        // ouvrir fichiers / dossiers
         .plugin(tauri_plugin_opener::init())
+
+        // dialogues natifs (file picker etc.)
         .plugin(tauri_plugin_dialog::init())
-        // On declare ici les commandes Rust visibles depuis le front-end.
-        .invoke_handler(tauri::generate_handler![search_files])
-        // Lance l'application avec la configuration generee par Tauri.
+
+        // expose les commandes au frontend
+        .invoke_handler(
+            tauri::generate_handler![
+                search_files
+            ]
+        )
+
+        // lance l’app Tauri
         .run(tauri::generate_context!())
+
         .expect("error while running tauri application");
 }
