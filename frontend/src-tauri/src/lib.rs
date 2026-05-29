@@ -1,152 +1,119 @@
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    use std::fs::OpenOptions;
-    use std::io::Write;
     use std::process::{Command, Stdio};
-    use std::thread;
     use std::time::Duration;
-
+    use std::thread;
+    use std::sync::{Arc, Mutex};
     use tauri::Manager;
 
-    // =========================
-    // BUILD APP
-    // =========================
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-
-        .invoke_handler(tauri::generate_handler![
-            is_ollama_available
-        ])
-
         .setup(|app| {
-            // =========================
-            // LOG FILE
-            // =========================
-            let log_path = "C:/Users/Public/c3po_debug.log";
-            let mut log_file = OpenOptions::new()
-                .create(true)
-                .append(true)
-                .open(log_path)
-                .ok();
 
-            macro_rules! log {
-                ($($arg:tt)*) => {
-                    if let Some(ref mut f) = log_file {
-                        let _ = writeln!(f, $($arg)*);
-                    }
-                };
-            }
-
-            log!("==============================");
-            log!("C3PO START");
-
-            // =========================
-            // OLLAMA CHECK
-            // =========================
-            fn is_ollama_running() -> bool {
-                std::net::TcpStream::connect("127.0.0.1:11434").is_ok()
-            }
-
-            fn wait_for_backend() -> bool {
-                for _ in 0..20 {
-                    if std::net::TcpStream::connect("127.0.0.1:8000").is_ok() {
-                        return true;
-                    }
-                    thread::sleep(Duration::from_millis(250));
-                }
-                false
-            }
-
-            let ollama_ready = is_ollama_running();
-
-            app.manage(OllamaState {
-                available: ollama_ready,
-            });
-
-            log!("Ollama ready: {}", ollama_ready);
-
-            // petit délai stabilisation
-            thread::sleep(Duration::from_millis(500));
-
-            // =========================
-            // BACKEND PATH SAFE RESOLVE
-            // =========================
-            let backend_path = match app.path().resolve(
+            let backend_path = app.path().resolve(
                 "bin/start_backend/start_backend.exe",
                 tauri::path::BaseDirectory::Resource,
-            ) {
-                Ok(p) => p,
-                Err(e) => {
-                    log!("❌ resolve backend error: {:?}", e);
-                    return Ok(());
+            ).expect("backend introuvable");
+
+            let backend_dir = backend_path.parent().unwrap().to_path_buf();
+
+            // =========================
+            // CLONES POUR THREADS
+            // =========================
+            let backend_path_1 = backend_path.clone();
+            let backend_dir_1 = backend_dir.clone();
+
+            let backend_path_2 = backend_path.clone();
+            let backend_dir_2 = backend_dir.clone();
+
+            // état partagé du process backend
+            let backend_process = Arc::new(Mutex::new(None::<std::process::Child>));
+            let process_ref = backend_process.clone();
+
+            // =========================
+            // START BACKEND FUNCTION
+            // =========================
+            let start_backend = move || {
+                let mut guard = process_ref.lock().unwrap();
+
+                let child = Command::new(&backend_path_1)
+                    .current_dir(&backend_dir_1)
+                    .stdout(Stdio::inherit())
+                    .stderr(Stdio::inherit())
+                    .spawn();
+
+                match child {
+                    Ok(c) => {
+                        println!("[backend] started PID {}", c.id());
+                        *guard = Some(c);
+                        true
+                    }
+                    Err(e) => {
+                        println!("[backend] spawn error: {:?}", e);
+                        false
+                    }
                 }
             };
 
-            log!("Backend path: {:?}", backend_path);
-
-            if !backend_path.exists() {
-                log!("❌ backend exe NOT FOUND");
-                return Ok(());
-            }
-
             // =========================
-            // WORKING DIRECTORY (IMPORTANT PYINSTALLER)
+            // HEALTH CHECK
             // =========================
-            let backend_dir = backend_path
-                .parent()
-                .unwrap()
-                .to_path_buf();
-
-            let internal_dir = backend_dir.join("_internal");
-
-            let working_dir = if internal_dir.exists() {
-                backend_dir.clone()
-            } else {
-                backend_dir.clone()
+            let health_check = || -> bool {
+                std::net::TcpStream::connect("127.0.0.1:8000").is_ok()
             };
 
-            log!("Working dir: {:?}", working_dir);
+            // =========================
+            // START INITIAL BACKEND
+            // =========================
+            start_backend();
 
             // =========================
-            // SPAWN BACKEND
+            // MONITOR THREAD
             // =========================
-            let backend_result = Command::new(&backend_path)
-                .current_dir(&working_dir)
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn();
+            let process_ref2 = backend_process.clone();
 
-            match backend_result {
-                Ok(child) => {
-                    log!("Backend started PID: {}", child.id());
+            thread::spawn(move || {
+                let mut retries = 0;
 
-                    // on ne bloque pas
-                    std::mem::forget(child);
+                loop {
+                    thread::sleep(Duration::from_millis(1500));
 
-                    let ok = wait_for_backend();
-                    log!("Backend reachable: {}", ok);
+                    if health_check() {
+                        retries = 0;
+                        continue;
+                    }
+
+                    println!("[backend] DOWN detected");
+
+                    if retries >= 3 {
+                        println!("[backend] MAX retries reached");
+                        break;
+                    }
+
+                    retries += 1;
+
+                    // kill old process
+                    if let Ok(mut guard) = process_ref2.lock() {
+                        if let Some(child) = guard.as_mut() {
+                            let _ = child.kill();
+                        }
+                        *guard = None;
+                    }
+
+                    println!("[backend] restarting... attempt {}", retries);
+
+                    let _ = Command::new(&backend_path_2)
+                        .current_dir(&backend_dir_2)
+                        .stdout(Stdio::inherit())
+                        .stderr(Stdio::inherit())
+                        .spawn();
                 }
-                Err(e) => {
-                    log!("❌ spawn error: {:?}", e);
-                }
-            }
-
-            log!("Setup complete");
+            });
 
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running tauri application");
-}
-
-#[derive(Clone)]
-struct OllamaState {
-    available: bool,
-}
-
-#[tauri::command]
-fn is_ollama_available(state: tauri::State<OllamaState>) -> bool {
-    state.available
+        .expect("error running app");
 }

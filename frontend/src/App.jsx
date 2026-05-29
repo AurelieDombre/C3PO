@@ -3,12 +3,14 @@ import "./assets/css/App.css"
 import { openPath } from "@tauri-apps/plugin-opener";
 // Pour installation du bot
 import OllamaGate from "./components/OllamaGate";
-import { useOllama } from "../hook/useOllama";
+import { useOllama } from "./hooks/useOllama.jsx";
 // Permettre de choisir le dossier dans lequel sont nos documents…,
 import SearchPathConfig from "../components/SearchPathConfig";
+import BackendGate from "./components/BackendGate.jsx";
 
 export default function App() {
   const rawApi = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+
   const API = (() => {
     try {
       const url = new URL(rawApi);
@@ -20,7 +22,7 @@ export default function App() {
       return "http://127.0.0.1:8000";
     }
   })();
-  // Appel au hook pour installation
+  // Appel au hooks pour installation
   const ollama = useOllama();
 
   const [messages, setMessages] = useState([]);
@@ -103,91 +105,94 @@ export default function App() {
   }
 
   return (
-    <OllamaGate ollama={ollama}>
-      <div className="ai-root">
-        <div className="ai-shell">
- 
-          {/* Header */}
-          <div className="ai-header">
-            <div className="ai-header-dot" />
-            <span className="ai-header-title">C3PO Assistant IA Local</span>
-            <span className="ai-header-sub">ollama · local</span>
-          </div>
-          <SearchPathConfig />
-          {/* Messages */}
-          <div className="ai-messages">
-            {messages.length === 0 && (
-              <div className="ai-empty">
-                <div className="ai-empty-icon">◈</div>
-                <span className="ai-empty-label">En attente d'un message…</span>
+      <BackendGate>
+        <OllamaGate ollama={ollama}>
+          <div className="ai-root">
+            <div className="ai-shell">
+
+              {/* Header */}
+              <div className="ai-header">
+                <div className="ai-header-dot"/>
+                <span className="ai-header-title">C3PO Assistant IA Local</span>
+                <span className="ai-header-sub">ollama · local</span>
               </div>
-            )}
- 
-            {messages.map((msg, i) => (
-              <div key={i} className={`ai-msg ai-msg--${msg.role}`}>
+              <SearchPathConfig/>
+              {/* Messages */}
+              <div className="ai-messages">
+                {messages.length === 0 && (
+                    <div className="ai-empty">
+                      <div className="ai-empty-icon">◈</div>
+                      <span className="ai-empty-label">En attente d'un message…</span>
+                    </div>
+                )}
+
+                {messages.map((msg, i) => (
+                    <div key={i} className={`ai-msg ai-msg--${msg.role}`}>
                 <span className="ai-msg-label">
                   {msg.role === "user" ? "Vous" : "C3PO"}
                 </span>
-                <div className="ai-bubble">{msg.content}</div>
-                {/* Fichiers retournés par la recherche */}
-                {msg.files && msg.files.length > 0 && (
-                  <div className="ai-files">
-                    {msg.files.map((file, j) => (
-                      <div key={j} className="ai-file-item">
-                        <button
-                          className="ai-file-link"
-                          onClick={() => handleOpenFile(file.path)}
-                        >
-                          {file.type === "folder" ? "📁" : "📄"} {file.name}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
- 
-            {loading && (
-              <div className="ai-msg ai-msg--assistant">
+                      <div className="ai-bubble">{msg.content}</div>
+                      {/* Fichiers retournés par la recherche */}
+                      {msg.files && msg.files.length > 0 && (
+                          <div className="ai-files">
+                            {msg.files.map((file, j) => (
+                                <div key={j} className="ai-file-item">
+                                  <button
+                                      className="ai-file-link"
+                                      onClick={() => handleOpenFile(file.path)}
+                                  >
+                                    {file.type === "folder" ? "📁" : "📄"} {file.name}
+                                  </button>
+                                </div>
+                            ))}
+                          </div>
+                      )}
+                    </div>
+                ))}
+
+                {loading && (
+                    <div className="ai-msg ai-msg--assistant">
                 <span className="ai-msg-label">
                   C3PO
                   </span>
-                <div className="ai-typing">
-                  <span /><span /><span />
-                </div>
+                      <div className="ai-typing">
+                        <span/><span/><span/>
+                      </div>
+                    </div>
+                )}
+
+                <div ref={bottomRef}/>
               </div>
-            )}
- 
-            <div ref={bottomRef} />
-          </div>
- 
-          {/* Input */}
-          <div className="ai-footer">
-            <div className="ai-input-row">
-              <input
-                ref={inputRef}
-                className="ai-input"
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Cherche mes PDF de factures…"
-                disabled={loading}
-                onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-              />
-              <button
-                className="ai-send"
-                onClick={handleSearch}
-                disabled={loading || !query.trim()}
-                aria-label="Envoyer"
-              >
-                ↑
-              </button>
+
+              {/* Input */}
+              <div className="ai-footer">
+                <div className="ai-input-row">
+                  <input
+                      ref={inputRef}
+                      className="ai-input"
+                      type="text"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Cherche mes PDF de factures…"
+                      disabled={loading}
+                      onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                  />
+                  <button
+                      className="ai-send"
+                      onClick={handleSearch}
+                      disabled={loading || !query.trim()}
+                      aria-label="Envoyer"
+                  >
+                    ↑
+                  </button>
+                </div>
+                <p className="ai-hint">Entrée pour envoyer · Powered by Ollama</p>
+              </div>
+
             </div>
-            <p className="ai-hint">Entrée pour envoyer · Powered by Ollama</p>
           </div>
- 
-        </div>
-      </div>
-    </OllamaGate>
+        </OllamaGate>
+      </BackendGate>
+
   );
 }
