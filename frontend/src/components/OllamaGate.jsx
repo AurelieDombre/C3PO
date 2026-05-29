@@ -4,12 +4,12 @@ import { open } from "@tauri-apps/plugin-shell";
 export default function OllamaGate({ children, ollama = {} }) {
     const { loading = true, available = false } = ollama;
 
-    if (loading) {
-        return <div className="ai-loading">Vérification du moteur IA...</div>;
+   if (ollama.loading) {
+        return <div>Chargement...</div>;
     }
 
-    if (!available) {
-        return (
+    if (!ollama.available) {
+      return (
             <div className="ai-gate">
                 <h2>⚠️ Ollama n’est pas installé</h2>
 
@@ -19,6 +19,7 @@ export default function OllamaGate({ children, ollama = {} }) {
             </div>
         );
     }
+
 
     return children;
 }

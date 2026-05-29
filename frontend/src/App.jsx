@@ -6,22 +6,12 @@ import OllamaGate from "./components/OllamaGate";
 import { useOllama } from "./hooks/useOllama.jsx";
 // Permettre de choisir le dossier dans lequel sont nos documents…,
 import SearchPathConfig from "../components/SearchPathConfig";
-import BackendGate from "./components/BackendGate.jsx";
+
+
+import { invoke } from "@tauri-apps/api/core";
 
 export default function App() {
-  const rawApi = import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
 
-  const API = (() => {
-    try {
-      const url = new URL(rawApi);
-      if (url.hostname === "localhost") {
-        url.hostname = "127.0.0.1";
-      }
-      return url.toString().replace(/\/$/, "");
-    } catch {
-      return "http://127.0.0.1:8000";
-    }
-  })();
   // Appel au hooks pour installation
   const ollama = useOllama();
 
@@ -36,53 +26,61 @@ export default function App() {
   }, [messages, loading]);
  
   async function handleSearch() {
-    const text = query.trim();
-    if (!text || loading) return;
+  const text = query.trim();
 
-    const newMessages = [...messages, { role: "user", content: text }];
-    setMessages(newMessages);
-    setQuery("");
-    setLoading(true);
-    //Sauvegarde le base_path (ex : "D:/")
+  if (!text || loading) return;
+
+  const newMessages = [
+    ...messages,
+    { role: "user", content: text }
+  ];
+
+  setMessages(newMessages);
+  setQuery("");
+  setLoading(true);
+
+  try {
+
     const savedPaths = JSON.parse(
-          localStorage.getItem("search_paths") || "[]"
-        );
-    try {
-      const response = await fetch(`${API}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: newMessages,
-          paths: savedPaths,
-        }),
-      });
+      localStorage.getItem("search_paths") || "[]"
+    );
 
-      const rawBody = await response.text();
-      let data = null;
+    // appel direct Rust
+    const data = await invoke("search_files", {
+      query: text,
+      paths: savedPaths,
+    });
 
-      if (rawBody) {
-        try {
-          data = JSON.parse(rawBody);
-        } catch {
-          data = null;
-        }
+    setMessages([
+      ...newMessages,
+      {
+        role: "assistant",
+        content: data.reply,
+        files: data.files
       }
+    ]);
 
-      if (!response.ok) {
-        throw new Error(data?.detail || rawBody || `HTTP ${response.status}`);
+  } catch (err) {
+
+    console.error(err);
+
+    setMessages([
+      ...newMessages,
+      {
+        role: "assistant",
+        content: "Erreur locale du moteur de recherche."
       }
-      setMessages([...newMessages, { role: "assistant", content: data.reply, files: data.files }]);
-    } catch (err) {
-      console.error(err);
-      setMessages([
-        ...newMessages,
-        { role: "assistant", content: `Impossible de joindre le serveur local${err?.message ? ` (${err.message})` : ""}.` },
-      ]);
-    } finally {
-      setLoading(false);
-      setTimeout(() => inputRef.current?.focus(), 50);
-    }
+    ]);
+
+  } finally {
+
+    setLoading(false);
+
+    setTimeout(() => {
+      inputRef.current?.focus();
+    }, 50);
   }
+}
 
   async function handleOpenFile(path) {
 
@@ -105,7 +103,7 @@ export default function App() {
   }
 
   return (
-      <BackendGate>
+
         <OllamaGate ollama={ollama}>
           <div className="ai-root">
             <div className="ai-shell">
@@ -192,7 +190,6 @@ export default function App() {
             </div>
           </div>
         </OllamaGate>
-      </BackendGate>
 
   );
 }
