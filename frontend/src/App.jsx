@@ -141,6 +141,7 @@ export default function App() {
                                   >
                                     {file.file_type === "folder" ? "📁" : "📄"} {file.name}
                                   </button>
+                                  <p>{file.path}</p>
                                 </div>
                             ))}
                           </div>
