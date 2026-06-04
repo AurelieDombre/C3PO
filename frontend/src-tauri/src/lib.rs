@@ -24,6 +24,11 @@ struct FileItem {
     #[serde(skip_serializing)]
     #[serde(skip_deserializing)]
     modified_secs: u64,
+    // Année extraite du nom du fichier (ex: "2025" dans "avis 2025.pdf")
+    // Prioritaire sur modified_secs pour want_latest
+    #[serde(skip_serializing)]
+    #[serde(skip_deserializing)]
+    year_in_name: u32,
 }
 
 #[derive(Serialize, Clone)]
@@ -47,7 +52,14 @@ struct ParsedQuery {
 // =========================================================
 
 fn find_ollama() -> bool {
-    if Command::new("ollama").arg("--version").output().is_ok() {
+    let mut cmd = Command::new("ollama");
+    cmd.arg("--version");
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
+    }
+    if cmd.output().is_ok() {
         return true;
     }
     if let Ok(local) = std::env::var("LOCALAPPDATA") {
@@ -277,6 +289,31 @@ async fn search_files(query: String, paths: Vec<String>) -> SearchResult {
 // HELPERS SCORING
 // =========================================================
 
+// Extrait la première année plausible (1900-2099) d'une chaîne.
+// "avis d'imposition 2025.pdf" → 2025
+// "travis_2019_backup" → 2019
+// Retourne 0 si aucune année trouvée.
+fn extract_year(s: &str) -> u32 {
+    let bytes = s.as_bytes();
+    let mut i = 0;
+    while i + 3 < bytes.len() {
+        // Cherche 4 chiffres consécutifs
+        if bytes[i..i+4].iter().all(|b| b.is_ascii_digit()) {
+            let year: u32 = s[i..i+4].parse().unwrap_or(0);
+            if year >= 1900 && year <= 2099 {
+                // Vérifie que ce n'est pas au milieu d'un nombre plus long
+                let before_ok = i == 0 || !bytes[i-1].is_ascii_digit();
+                let after_ok  = i + 4 >= bytes.len() || !bytes[i+4].is_ascii_digit();
+                if before_ok && after_ok {
+                    return year;
+                }
+            }
+        }
+        i += 1;
+    }
+    0
+}
+
 // Vérifie que `needle` apparaît comme mot entier dans `haystack`.
 // Séparateurs : tout caractère non alphanumérique (espace, _, -, ., apostrophe…)
 // Exemples :
@@ -310,10 +347,17 @@ fn scan_files(keywords: &[String], want_latest: bool, paths: &[String]) -> Vec<F
 
     for base in paths {
         let base_path = Path::new(base);
-        if !base_path.exists() { continue; }
+
+        if !base_path.exists() {
+            continue;
+        }
+
         println!("Scan : {}", base);
 
-        for entry in WalkDir::new(base_path).into_iter().filter_map(|e| e.ok()) {
+        for entry in WalkDir::new(base_path)
+            .into_iter()
+            .filter_map(|e| e.ok())
+        {
             let path = entry.path();
 
             let file_name = path
@@ -325,13 +369,83 @@ fn scan_files(keywords: &[String], want_latest: bool, paths: &[String]) -> Vec<F
             let full_path = path.display().to_string().to_lowercase();
 
             let mut score = 0;
+            let mut matched_count = 0;
+
+            // =====================================================
+            // MATCHING DES MOTS-CLÉS
+            // =====================================================
+            //
+            // - Nom du fichier = bonus fort
+            // - Chemin du fichier = bonus faible
+            // - Tous les mots ne sont plus obligatoires
+            //
             for kw in keywords {
-                // Matching mot entier : "avis" ne matche pas "travis"
-                // On considère comme séparateurs tout ce qui n'est pas alphanumérique
-                if contains_whole_word(&file_name, kw) { score += 10; }
-                if contains_whole_word(&full_path, kw)  { score += 3;  }
+
+                let in_name = contains_whole_word(&file_name, kw);
+                let in_path = contains_whole_word(&full_path, kw);
+
+                if in_name || in_path {
+
+                    matched_count += 1;
+
+                    if in_name {
+                        score += 20;
+                    }
+
+                    if in_path {
+                        score += 10;
+                    }
+                }
             }
-            if score == 0 { continue; }
+
+            // =====================================================
+            // FILTRE MINIMUM
+            // =====================================================
+            //
+            // Aucun mot-clé trouvé => rejet
+            //
+            if matched_count == 0 {
+                continue;
+            }
+
+            // =====================================================
+            // SOUPLESSE CONTRÔLÉE
+            // =====================================================
+            //
+            // Exemple :
+            //
+            // 1 mot demandé  -> 1 mot requis
+            // 2 mots demandés -> 1 mot requis
+            // 3 mots demandés -> 2 mots requis
+            // 4 mots demandés -> 2 mots requis
+            // 5 mots demandés -> 3 mots requis
+            //
+            let min_required =
+                ((keywords.len() as f32) * 0.5).ceil() as usize;
+
+            if matched_count < min_required {
+                continue;
+            }
+
+            // =====================================================
+            // BONUS SI TOUS LES MOTS SONT TROUVÉS
+            // =====================================================
+            //
+            // Permet de favoriser :
+            //
+            // "avis imposition"
+            //
+            // devant :
+            //
+            // "avis impot"
+            //
+            if matched_count == keywords.len() {
+                score += 50;
+            }
+
+            // =====================================================
+            // MÉTADONNÉES
+            // =====================================================
 
             let file_type = if path.is_dir() {
                 "folder".to_string()
@@ -349,35 +463,80 @@ fn scan_files(keywords: &[String], want_latest: bool, paths: &[String]) -> Vec<F
                 .map(|d| d.as_secs())
                 .unwrap_or(0);
 
+            let year_in_name = extract_year(&file_name);
+
             results.push(FileItem {
                 name: path
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or("unknown")
                     .to_string(),
+
                 path: path.display().to_string(),
+
                 file_type,
+
                 score,
+
                 modified_secs,
+
+                year_in_name,
             });
         }
     }
 
-    // Tri : date prime si want_latest, sinon score + date en départage
-    results.sort_by(|a, b| {
-        if want_latest {
-            b.modified_secs.cmp(&a.modified_secs)
-                .then_with(|| b.score.cmp(&a.score))
-        } else {
-            b.score.cmp(&a.score)
-                .then_with(|| b.modified_secs.cmp(&a.modified_secs))
-        }
-    });
+    // =========================================================
+    // TRI DES RÉSULTATS
+    // =========================================================
+    //
+    // 1. Pertinence (score)
+    // 2. Année dans le nom
+    // 3. Date de modification
+    //
+    if want_latest {
 
-    let limit = if want_latest { 1 } else { 50 };
+        results.sort_by(|a, b| {
+
+            b.score.cmp(&a.score)
+
+                .then_with(|| {
+                    b.modified_secs.cmp(&a.modified_secs)
+                })
+
+                .then_with(|| {
+                    b.year_in_name.cmp(&a.year_in_name)
+                })
+        });
+
+    } else {
+
+        results.sort_by(|a, b| {
+
+            b.score.cmp(&a.score)
+
+                .then_with(|| {
+                    b.year_in_name.cmp(&a.year_in_name)
+                })
+
+                .then_with(|| {
+                    b.modified_secs.cmp(&a.modified_secs)
+                })
+        });
+
+    }
+
+    // =========================================================
+    // LIMITATION DES RÉSULTATS
+    // =========================================================
+    //
+    // Quand l'utilisateur demande "le dernier",
+    // on affiche quand même quelques propositions
+    // plutôt qu'un seul résultat potentiellement faux.
+    //
+    let limit = if want_latest { 5 } else { 50 };
+
     results.into_iter().take(limit).collect()
 }
-
 // =========================================================
 // POINT D'ENTRÉE TAURI
 // =========================================================
