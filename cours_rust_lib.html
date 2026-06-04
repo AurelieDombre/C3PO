@@ -1,0 +1,378 @@
+
+<style>
+  .cours { font-family: var(--font-sans); color: var(--color-text-primary); padding: 0.5rem 0; }
+  .nav { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1.5rem; }
+  .nav button { font-size: 13px; padding: 6px 14px; border-radius: 20px; border: 0.5px solid var(--color-border-secondary); background: var(--color-background-secondary); color: var(--color-text-secondary); cursor: pointer; transition: all .15s; }
+  .nav button.active { background: var(--color-background-info); color: var(--color-text-info); border-color: var(--color-border-info); }
+  .section { display: none; }
+  .section.active { display: block; }
+  .concept-card { background: var(--color-background-secondary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; margin-bottom: 1rem; border: 0.5px solid var(--color-border-tertiary); }
+  .concept-card h3 { margin: 0 0 8px; font-size: 15px; font-weight: 500; }
+  .concept-card p { margin: 0 0 8px; font-size: 14px; color: var(--color-text-secondary); line-height: 1.6; }
+  pre { background: var(--color-background-tertiary); border-radius: var(--border-radius-md); padding: 12px 16px; font-family: var(--font-mono); font-size: 12.5px; overflow-x: auto; margin: 8px 0; border: 0.5px solid var(--color-border-tertiary); line-height: 1.6; }
+  .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; margin-bottom: 8px; }
+  .tag-rust { background: var(--color-background-warning); color: var(--color-text-warning); }
+  .tag-concept { background: var(--color-background-info); color: var(--color-text-info); }
+  .tag-comparaison { background: var(--color-background-success); color: var(--color-text-success); }
+  .highlight { color: var(--color-text-info); font-weight: 500; }
+  .ask-btn { margin-top: 10px; font-size: 13px; padding: 6px 14px; }
+  hr { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 1.25rem 0; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 500px) { .grid2 { grid-template-columns: 1fr; } }
+</style>
+
+<div class="cours">
+  <div class="nav">
+    <button class="active" onclick="show('imports')">1. Imports</button>
+    <button onclick="show('structs')">2. Structs</button>
+    <button onclick="show('fonctions')">3. Fonctions</button>
+    <button onclick="show('ownership')">4. Ownership</button>
+    <button onclick="show('erreurs')">5. Erreurs</button>
+    <button onclick="show('tauri')">6. Tauri</button>
+  </div>
+
+  <!-- 1. IMPORTS -->
+  <div id="s-imports" class="section active">
+    <div class="concept-card">
+      <span class="tag tag-concept">concept</span>
+      <h3>use — importer du code externe</h3>
+      <p>En Rust, <span class="highlight">use</span> sert à rendre disponible du code depuis une autre bibliothèque (appelée "crate"). C'est l'équivalent de <code>import</code> en JavaScript.</p>
+      <pre>// Ton code
+use serde::{Serialize, Deserialize};
+use std::path::Path;
+use walkdir::WalkDir;
+use std::process::Command;
+use reqwest::blocking::Client;</pre>
+      <pre>// Équivalent JavaScript :
+import { Serialize, Deserialize } from "serde";
+import { Path } from "std/path";
+import { WalkDir } from "walkdir";</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">syntaxe rust</span>
+      <h3>Les accolades dans use</h3>
+      <p><code>use serde::{Serialize, Deserialize}</code> importe deux éléments d'un coup depuis <code>serde</code>. Sans accolades, on n'importe qu'un seul élément.</p>
+      <pre>// Importer plusieurs en une ligne
+use serde::{Serialize, Deserialize};
+
+// Équivalent en deux lignes
+use serde::Serialize;
+use serde::Deserialize;</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-concept">les crates de ton projet</span>
+      <h3>À quoi servent tes imports ?</h3>
+      <pre>serde        → sérialiser/désérialiser (Rust ↔ JSON)
+std::path    → manipuler des chemins de fichiers
+walkdir      → scanner un dossier récursivement
+std::process → lancer des commandes système (ollama)
+reqwest      → faire des requêtes HTTP (vers Ollama)</pre>
+      <button class="ask-btn" onclick="sendPrompt('Explique-moi la différence entre std et une crate externe comme reqwest')">Différence std vs crate externe ↗</button>
+    </div>
+  </div>
+
+  <!-- 2. STRUCTS -->
+  <div id="s-structs" class="section">
+    <div class="concept-card">
+      <span class="tag tag-concept">concept</span>
+      <h3>struct — définir un type de données</h3>
+      <p>Une <span class="highlight">struct</span> est un objet avec des champs nommés. C'est comme un objet JavaScript, mais le type de chaque champ est obligatoire.</p>
+      <pre>// Ton code Rust
+#[derive(Serialize, Clone)]
+struct SearchResult {
+    reply: String,
+    files: Vec&lt;FileItem&gt;,
+}
+
+// Équivalent JavaScript
+const searchResult = {
+    reply: "",      // String
+    files: [],      // Array&lt;FileItem&gt;
+};</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">attributs derive</span>
+      <h3>#[derive(...)] — ajouter des capacités automatiquement</h3>
+      <p>Ces annotations au-dessus d'une struct disent au compilateur de générer automatiquement du code.</p>
+      <pre>#[derive(Serialize, Clone)]
+//        ↑           ↑
+//   → peut être     → peut être
+//   converti en     copié en mémoire
+//   JSON</pre>
+      <pre>#[derive(Serialize, Deserialize, Clone)]
+//   → peut aussi être lu depuis du JSON</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">types courants</span>
+      <h3>Les types dans tes structs</h3>
+      <div class="grid2">
+        <div>
+          <pre>String   → texte
+usize    → entier positif
+bool     → vrai/faux</pre>
+        </div>
+        <div>
+          <pre>Vec&lt;T&gt;  → tableau de T
+          // comme Array en JS</pre>
+        </div>
+      </div>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-concept">serde skip</span>
+      <h3>#[serde(skip_serializing)] sur un champ</h3>
+      <p>Le champ <code>score</code> de <code>FileItem</code> est utilisé en interne pour trier, mais tu ne veux pas l'envoyer au frontend. Ces attributs l'excluent du JSON.</p>
+      <pre>#[serde(skip_serializing)]
+#[serde(skip_deserializing)]
+score: usize,
+// → présent en Rust, absent du JSON</pre>
+      <button class="ask-btn" onclick="sendPrompt('Pourquoi utiliser serde skip sur le champ score dans FileItem ?')">Pourquoi skip score ? ↗</button>
+    </div>
+  </div>
+
+  <!-- 3. FONCTIONS -->
+  <div id="s-fonctions" class="section">
+    <div class="concept-card">
+      <span class="tag tag-concept">concept</span>
+      <h3>fn — déclarer une fonction</h3>
+      <p>Toute fonction commence par <span class="highlight">fn</span>. Le type de retour est indiqué après <code>-&gt;</code>. S'il n'y a pas de <code>-&gt;</code>, la fonction ne retourne rien.</p>
+      <pre>// Rust
+fn search_files(query: String, paths: Vec&lt;String&gt;) -> SearchResult {
+    // ...
+}
+
+// JavaScript équivalent
+function searchFiles(query, paths) {
+    // ...
+    return searchResult;
+}</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">let et mut</span>
+      <h3>Les variables : immuables par défaut</h3>
+      <p>En Rust, une variable créée avec <code>let</code> est <span class="highlight">immuable</span> par défaut. Pour pouvoir la modifier, il faut ajouter <code>mut</code>.</p>
+      <pre>let score = 0;        // ❌ ne peut pas changer
+let mut score = 0;    // ✅ peut changer
+score += 10;          // OK car mut</pre>
+      <pre>// Dans ton code
+let mut results: Vec&lt;FileItem&gt; = vec![];
+// → on va ajouter des éléments donc mut obligatoire</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">la dernière expression</span>
+      <h3>Retour implicite — pas de return obligatoire</h3>
+      <p>En Rust, la <span class="highlight">dernière expression</span> d'une fonction est automatiquement retournée si elle n'a pas de point-virgule.</p>
+      <pre>// Avec return explicite
+fn double(x: i32) -> i32 {
+    return x * 2;
+}
+
+// Style Rust idiomatique (sans return)
+fn double(x: i32) -> i32 {
+    x * 2   // ← pas de ; → c'est la valeur retournée
+}</pre>
+      <pre>// Dans ton code
+OllamaStatus {     // ← retour implicite de la struct
+    installed,
+    running,
+    models,
+}                  // ← pas de ;</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">format!</span>
+      <h3>format! — construire une String</h3>
+      <p>C'est l'équivalent des template literals JavaScript.</p>
+      <pre>// Rust
+format!("Aucun résultat pour : {}", query)
+
+// JavaScript équivalent
+`Aucun résultat pour : ${query}`</pre>
+      <button class="ask-btn" onclick="sendPrompt('Quelle est la différence entre format!, print! et println! en Rust ?')">format! vs println! ↗</button>
+    </div>
+  </div>
+
+  <!-- 4. OWNERSHIP -->
+  <div id="s-ownership" class="section">
+    <div class="concept-card">
+      <span class="tag tag-concept">concept clé de Rust</span>
+      <h3>Ownership — la propriété de la mémoire</h3>
+      <p>C'est le concept le plus unique de Rust. Chaque valeur a <span class="highlight">un seul propriétaire</span>. Quand ce propriétaire disparaît, la mémoire est libérée automatiquement.</p>
+      <pre>let a = String::from("bonjour");
+let b = a;   // a n'existe plus ! b est le nouveau propriétaire
+println!("{}", a);  // ❌ ERREUR de compilation</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">& et &amp;str vs String</span>
+      <h3>Les références — emprunter sans prendre</h3>
+      <p>Le <code>&amp;</code> devant un type crée une <span class="highlight">référence</span> : on emprunte la valeur sans en prendre la propriété.</p>
+      <pre>// Dans ton code
+fn ollama_rank(query: &str, files: Vec&lt;FileItem&gt;) -> Vec&lt;FileItem&gt; {
+//                    ↑
+//             & = on emprunte query,
+//             on n'en prend pas la propriété</pre>
+      <pre>// Différence String vs &str
+String   → propriétaire, alloué sur le tas, modifiable
+&str     → référence, lecture seule, léger</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">clone</span>
+      <h3>.clone() — faire une vraie copie</h3>
+      <p>Quand on ne peut pas emprunter et qu'on a besoin de la valeur à deux endroits, on clone.</p>
+      <pre>// #[derive(Clone)] permet d'appeler .clone()
+let file1 = FileItem { name: "test".to_string(), ... };
+let file2 = file1.clone();  // copie complète
+// file1 ET file2 existent maintenant</pre>
+      <button class="ask-btn" onclick="sendPrompt('Pourquoi clone est coûteux en Rust et quand faut-il éviter de l\'utiliser ?')">Quand éviter clone ? ↗</button>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">into_iter / collect</span>
+      <h3>Itérateurs — transformer des collections</h3>
+      <p>Rust utilise des chaînes d'itérateurs plutôt que des boucles for classiques. C'est comme les méthodes de tableau JavaScript.</p>
+      <pre>// Rust
+let keywords: Vec&lt;String&gt; = query
+    .to_lowercase()           // met en minuscules
+    .split_whitespace()       // découpe en mots
+    .filter(|w| ...)          // garde certains mots
+    .map(|s| s.to_string())   // convertit chaque mot
+    .collect();               // reconstitue le Vec
+
+// JavaScript équivalent
+const keywords = query
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(w => ...)
+    .map(s => s);</pre>
+    </div>
+  </div>
+
+  <!-- 5. GESTION D'ERREURS -->
+  <div id="s-erreurs" class="section">
+    <div class="concept-card">
+      <span class="tag tag-concept">concept</span>
+      <h3>Result et Option — pas d'exceptions en Rust</h3>
+      <p>Rust n'a pas de <code>try/catch</code>. Les erreurs sont des valeurs retournées. <span class="highlight">Result</span> représente succès ou erreur, <span class="highlight">Option</span> représente présence ou absence.</p>
+      <pre>// Result&lt;T, E&gt; : soit Ok(valeur), soit Err(erreur)
+let response = client.post(...).send();
+// → Result&lt;Response, Error&gt;
+
+// Option&lt;T&gt; : soit Some(valeur), soit None
+let ext = path.extension();
+// → Option&lt;&OsStr&gt;</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">match</span>
+      <h3>match — gérer tous les cas</h3>
+      <p><code>match</code> est comme un <code>switch</code> mais exhaustif : le compilateur oblige à gérer tous les cas.</p>
+      <pre>// Dans ton code
+match resp {
+    Ok(r) => {
+        // succès : r contient la réponse
+        let json = r.json()...
+    }
+    Err(_) => vec![],  // erreur : on retourne un tableau vide
+}
+
+// Équivalent JavaScript (try/catch)
+try {
+    const r = await fetch(...)
+    // succès
+} catch(e) {
+    return [];
+}</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">unwrap_or / unwrap_or_default</span>
+      <h3>Raccourcis pour Option et Result</h3>
+      <pre>// unwrap_or → valeur par défaut si None ou Err
+path.extension()
+    .and_then(|e| e.to_str())
+    .unwrap_or("file")   // si None → "file"
+
+// unwrap_or_default → valeur vide du type
+r.json().unwrap_or_default()  // si erreur → serde_json::Value::Null</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">let Ok(...) else</span>
+      <h3>Le pattern "early return" de ton code</h3>
+      <p>C'est un raccourci moderne pour quitter une fonction si quelque chose échoue.</p>
+      <pre>// Dans ton code
+let Ok(response) = response else {
+    println!("Ollama inaccessible");
+    return files;   // ← quitte la fonction ici
+};
+// ici, on est certain que response est Ok
+
+// Équivalent verbeux
+let response = match response {
+    Ok(r) => r,
+    Err(_) => {
+        println!("Ollama inaccessible");
+        return files;
+    }
+};</pre>
+      <button class="ask-btn" onclick="sendPrompt('Explique-moi le opérateur ? en Rust et comment il simplifie la gestion d\'erreurs')">L'opérateur ? en Rust ↗</button>
+    </div>
+  </div>
+
+  <!-- 6. TAURI -->
+  <div id="s-tauri" class="section">
+    <div class="concept-card">
+      <span class="tag tag-concept">Tauri</span>
+      <h3>#[tauri::command] — exposer une fonction au frontend</h3>
+      <p>Cette annotation transforme une fonction Rust normale en commande appelable depuis JavaScript avec <code>invoke()</code>.</p>
+      <pre>// Rust — côté backend
+#[tauri::command]
+fn search_files(query: String, paths: Vec&lt;String&gt;) -> SearchResult {
+    // ...
+}
+
+// JavaScript — côté frontend
+const data = await invoke("search_files", {
+    query: "mes factures",
+    paths: ["/home/user/documents"]
+});</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">invoke_handler</span>
+      <h3>Enregistrer les commandes dans run()</h3>
+      <p>Chaque commande doit être déclarée dans <code>invoke_handler</code> pour être accessible. Oublier une commande = erreur au runtime.</p>
+      <pre>tauri::generate_handler![
+    search_files,   // ← nom de la fonction Rust
+    ollama_status,
+    start_ollama,
+    pull_model
+]</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-rust">plugins</span>
+      <h3>Les plugins Tauri dans ton code</h3>
+      <pre>tauri_plugin_shell::init()    // exécuter des commandes système
+tauri_plugin_opener::init()   // ouvrir des fichiers/URLs
+tauri_plugin_dialog::init()   // boîtes de dialogue natives</pre>
+    </div>
+    <div class="concept-card">
+      <span class="tag tag-concept">spawn vs output</span>
+      <h3>Lancer un processus : spawn vs output</h3>
+      <pre>// .spawn() → lance et n'attend pas la fin
+Command::new("ollama")
+    .arg("serve")
+    .spawn()   // démarre ollama en arrière-plan
+    .is_ok()
+
+// .output() → lance et attend le résultat
+Command::new("ollama")
+    .arg("--version")
+    .output()   // attend la réponse
+    .is_ok()</pre>
+      <button class="ask-btn" onclick="sendPrompt('Quelle est la différence entre spawn, output et status dans std::process::Command en Rust ?')">spawn vs output vs status ↗</button>
+    </div>
+  </div>
+</div>
+
+<script>
+function show(id) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('s-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+</script>

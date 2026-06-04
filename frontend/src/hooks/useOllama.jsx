@@ -1,43 +1,62 @@
-// src/hooks/useOllama.js
-
-import { useEffect, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useRef, useState } from "react";
 
 export function useOllama() {
 
+  const mounted = useRef(false);
+
   const [status, setStatus] = useState({
     loading: true,
-    available: false,
+    installed: false,
+    running: false,
+    models: []
   });
 
-  useEffect(() => {
+  async function refresh() {
+    try {
+      const result = await invoke("ollama_status");
 
-    async function checkOllama() {
+      if (!mounted.current) return;
 
-      try {
+      setStatus({
+        loading: false,
+        ...result
+      });
 
-        const response = await fetch(
-          "http://127.0.0.1:11434/api/tags"
-        );
-
-        setStatus({
-          loading: false,
-          available: response.ok,
-        });
-
-      } catch (err) {
-
-        console.error("Ollama check failed:", err);
+      }catch (err) {
+        console.warn("Ollama not reachable:", err);
 
         setStatus({
           loading: false,
-          available: false,
+          installed: false,
+          running: false,
+          models: []
         });
       }
-    }
+  }
 
-    checkOllama();
+  useEffect(() => {
+    mounted.current = true;
+
+    // ⚠️ important : on décale le premier call (pas immédiat sync)
+    const init = setTimeout(() => {
+      refresh();
+    }, 0);
+
+    const timer = setInterval(() => {
+      refresh();
+    }, 3000);
+
+    return () => {
+      mounted.current = false;
+      clearTimeout(init);
+      clearInterval(timer);
+    };
 
   }, []);
 
-  return status;
+  return {
+    ...status,
+    refresh
+  };
 }
