@@ -26,3 +26,9 @@ tauri-plugin-log = "2"
 tauri-plugin-shell = "2.3.5"
 tauri-plugin-opener = "2" 
 tauri-plugin-dialog = "2.7.1"
+fuzzy-matcher = "0.3.7"
+rayon = "1.10.0"
+rusqlite = "0.40.0"
+walkdir = "2"
+reqwest = { version = "0.12", features = ["json", "blocking"] }
+tokio = { version = "1", features = ["rt-multi-thread"] }
